@@ -54,8 +54,8 @@ async function processImage(
       const possiblePaths = [
         path.join(sourceDir, imagePath),
         path.join(sourceDir, "pics", imagePath),
-        path.join("/Users/xinference/Sync/md/pics", imagePath),
-        path.join("/Users/xinference/Sync/md", imagePath),
+        path.join("/Users/mac-m4/sync/md/pics", imagePath),
+        path.join("/Users/mac-m4/sync/md", imagePath),
       ];
 
       let found = false;
@@ -150,9 +150,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 处理文件路径 - 确保使用绝对路径
+    let fullFilePath = filePath;
+    if (!path.isAbsolute(filePath)) {
+      // 如果是相对路径，尝试从当前工作目录解析
+      fullFilePath = path.resolve(process.cwd(), filePath);
+    }
+
+    // 检查文件是否存在
+    try {
+      await fs.access(fullFilePath);
+    } catch (error) {
+      return NextResponse.json(
+        { 
+          error: `File not found: ${filePath}`,
+          details: `Attempted to read file at: ${fullFilePath}` 
+        },
+        { status: 404 },
+      );
+    }
+
     // 读取Markdown文件
-    const content = await fs.readFile(filePath, "utf-8");
-    const sourceDir = path.dirname(filePath);
+    const content = await fs.readFile(fullFilePath, "utf-8");
+    const sourceDir = path.dirname(fullFilePath);
 
     // 处理图片
     let result = { content, images: 0 };
@@ -169,16 +189,38 @@ export async function POST(request: NextRequest) {
       success: true,
       content: result.content,
       images: result.images,
-      filePath,
+      filePath: fullFilePath,
     });
   } catch (error) {
     console.error("Import markdown error:", error);
+    
+    // 提供更具体的错误信息
+    let errorMessage = "Failed to import markdown";
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      if (error.message.includes("ENOENT")) {
+        errorMessage = `File not found: ${filePath}`;
+        statusCode = 404;
+      } else if (error.message.includes("EACCES")) {
+        errorMessage = `Permission denied: Cannot read file ${filePath}`;
+        statusCode = 403;
+      } else if (error.message.includes("EISDIR")) {
+        errorMessage = `Path is a directory, not a file: ${filePath}`;
+        statusCode = 400;
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return NextResponse.json(
       {
-        error: "Failed to import markdown",
+        error: errorMessage,
         details: error instanceof Error ? error.message : "Unknown error",
+        filePath: filePath,
+        resolvedPath: fullFilePath || filePath
       },
-      { status: 500 },
+      { status: statusCode },
     );
   }
 }

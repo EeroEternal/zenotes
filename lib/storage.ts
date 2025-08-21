@@ -2,10 +2,12 @@ import { Note, NoteMetadata } from "@/types/note";
 import { v4 as uuidv4 } from "uuid";
 import {
   smartCleanup,
+  emergencyCleanup,
   canSaveNote,
   estimateNoteSize,
   cleanupCorruptedData,
 } from "./storage-manager";
+import { settingsManager } from "@/lib/settings";
 
 const STORAGE_KEY = "mynotes_data";
 const METADATA_KEY = "mynotes_metadata";
@@ -54,7 +56,40 @@ export function getNote(id: string): Note | null {
 export function saveNote(note: Note): void {
   if (typeof window === "undefined") return;
 
+  const storageSettings = settingsManager.getSettingsGroup("storage");
+
   try {
+    // 检查当前存储使用情况
+    const currentUsage = getStorageUsagePercentage();
+    const storageInfo = getStorageInfo();
+
+    console.log(`Storage status: ${currentUsage}% used (${(storageInfo.used / 1024 / 1024).toFixed(2)}MB / ${((storageInfo.used + storageInfo.available) / 1024 / 1024).toFixed(2)}MB)`);
+
+    // 如果存储使用率超过阈值，先尝试清理
+    if (currentUsage >= storageSettings.cleanupThresholdPercent) {
+      console.log(`Storage usage at ${currentUsage}%, attempting cleanup...`);
+      const cleanupSuccess = smartCleanup(1024 * 1024); // 尝试释放1MB
+      if (cleanupSuccess) {
+        console.log("Preventive cleanup successful");
+      } else {
+        console.log("Preventive cleanup failed");
+      }
+    }
+
+    // 如果存储使用率超过95%，强制进行更激进的清理
+    if (currentUsage >= 95) {
+      console.log(`Storage critically full at ${currentUsage}%, forcing aggressive cleanup...`);
+      const aggressiveCleanup = smartCleanup(2 * 1024 * 1024); // 尝试释放2MB
+      if (!aggressiveCleanup) {
+        // 如果智能清理失败，尝试紧急清理
+        console.log("Smart cleanup failed, trying emergency cleanup...");
+        const emergencySuccess = emergencyCleanup(2 * 1024 * 1024);
+        console.log(`Emergency cleanup ${emergencySuccess ? 'succeeded' : 'failed'}`);
+      } else {
+        console.log("Aggressive cleanup succeeded");
+      }
+    }
+
     // 保存笔记内容
     const noteData = {
       ...note,
@@ -69,37 +104,71 @@ export function saveNote(note: Note): void {
     };
 
     // 检查存储空间
-    const dataStr = JSON.stringify(noteData);
-    const dataSize = new Blob([dataStr]).size;
+    let dataStr = JSON.stringify(noteData);
+    let dataSize = new Blob([dataStr]).size;
 
-    // 如果单个笔记超过 500KB，可能需要压缩或拒绝
-    if (dataSize > 500 * 1024) {
+    // 检查单个笔记大小限制
+    const maxNoteSizeBytes = storageSettings.maxNoteSizeKB * 1024;
+
+    if (dataSize > maxNoteSizeBytes) {
       console.warn(
-        `Note ${note.id} is too large: ${(dataSize / 1024).toFixed(2)}KB`,
+        `Note ${note.id} is too large: ${(dataSize / 1024).toFixed(2)}KB (max: ${storageSettings.maxNoteSizeKB}KB)`,
       );
-      // 尝试压缩内容
-      const compressedNote = {
-        ...noteData,
-        content: compressContent(noteData.content),
-      };
-      localStorage.setItem(
-        `${STORAGE_KEY}_${note.id}`,
-        JSON.stringify(compressedNote),
-      );
+
+      // 如果启用了压缩，尝试压缩内容
+      if (storageSettings.enableCompression) {
+        const compressedNote = {
+          ...noteData,
+          content: compressContent(noteData.content),
+        };
+        dataStr = JSON.stringify(compressedNote);
+        dataSize = new Blob([dataStr]).size;
+
+        // 检查压缩后是否仍然过大
+        if (dataSize > maxNoteSizeBytes) {
+          throw new Error(`笔记过大 (${(dataSize / 1024).toFixed(2)}KB)，即使压缩后仍超过限制 (${storageSettings.maxNoteSizeKB}KB)`);
+        }
+
+        localStorage.setItem(`${STORAGE_KEY}_${note.id}`, dataStr);
+      } else {
+        throw new Error(`笔记过大 (${(dataSize / 1024).toFixed(2)}KB)，超过限制 (${storageSettings.maxNoteSizeKB}KB)`);
+      }
     } else {
       localStorage.setItem(`${STORAGE_KEY}_${note.id}`, dataStr);
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "QuotaExceededError") {
-      // 存储空间已满，尝试智能清理
-      console.error("Storage quota exceeded. Attempting smart cleanup...");
+      // 存储空间已满，尝试更激进的清理
+      console.warn("Storage quota exceeded. Attempting aggressive cleanup...");
 
-      const requiredSpace = estimateNoteSize(note) + 100 * 1024; // 需要的空间 + 缓冲
-      const cleanupSuccess = smartCleanup(requiredSpace);
+      try {
+        // 尝试释放更多空间
+        const requiredSpace = estimateNoteSize(note) + 1024 * 1024; // 需要的空间 + 1MB缓冲
+        let cleanupSuccess = false;
 
-      if (cleanupSuccess) {
-        // 重试一次
-        try {
+        // 强制启用自动清理，即使用户禁用了
+        console.log("Forcing aggressive cleanup due to storage full...");
+
+        // 先尝试智能清理
+        cleanupSuccess = smartCleanup(requiredSpace);
+
+        // 如果智能清理失败，尝试更激进的清理
+        if (!cleanupSuccess) {
+          console.warn("Smart cleanup failed, trying aggressive cleanup...");
+          const details = getStorageDetails();
+          const targetFree = Math.max(requiredSpace, details.totalSize * 0.4); // 释放40%空间
+          const deleted = cleanupStorage(targetFree);
+          cleanupSuccess = deleted > 0;
+        }
+
+        // 如果还是失败，尝试删除最大的几个笔记
+        if (!cleanupSuccess) {
+          console.warn("Aggressive cleanup failed, trying emergency cleanup...");
+          cleanupSuccess = emergencyCleanup(requiredSpace);
+        }
+
+        if (cleanupSuccess) {
+          // 重试保存
           const noteData = {
             ...note,
             createdAt:
@@ -111,17 +180,32 @@ export function saveNote(note: Note): void {
                 ? note.updatedAt.toISOString()
                 : new Date(note.updatedAt).toISOString(),
           };
-          localStorage.setItem(
-            `${STORAGE_KEY}_${note.id}`,
-            JSON.stringify(noteData),
-          );
-        } catch (retryError) {
+
+          let finalDataStr = JSON.stringify(noteData);
+
+          // 如果启用压缩，压缩后再保存
+          if (storageSettings.enableCompression) {
+            const compressedNote = {
+              ...noteData,
+              content: compressContent(noteData.content),
+            };
+            finalDataStr = JSON.stringify(compressedNote);
+          }
+
+          localStorage.setItem(`${STORAGE_KEY}_${note.id}`, finalDataStr);
+        } else {
           throw new Error(
-            "存储空间已满，无法保存新笔记。请手动删除一些旧笔记。",
+            `浏览器存储空间已满 (${(getStorageInfo().used / 1024 / 1024).toFixed(1)}MB)。请在存储管理中删除一些旧笔记，或增加存储容量配置。`
           );
         }
-      } else {
-        throw new Error("存储空间已满，自动清理失败。请手动删除一些笔记。");
+      } catch (retryError) {
+        if (retryError instanceof DOMException && retryError.name === "QuotaExceededError") {
+          throw new Error(
+            `浏览器存储空间已满，无法保存笔记。当前使用: ${(getStorageInfo().used / 1024 / 1024).toFixed(1)}MB。请删除一些旧笔记后重试。`
+          );
+        } else {
+          throw retryError;
+        }
       }
     } else {
       throw error;
@@ -414,21 +498,23 @@ function extractExcerpt(content: any[]): string {
 }
 
 // 检查存储空间
-export function getStorageInfo(): { used: number; available: number } {
+export function getStorageInfo(): { used: number; available: number; browserLimit: number; configuredLimit: number } {
   if (typeof window === "undefined") {
-    return { used: 0, available: 0 };
+    return { used: 0, available: 0, browserLimit: 0, configuredLimit: 0 };
   }
 
   let used = 0;
-  let available = 5 * 1024 * 1024; // 假设 5MB 限制
 
-  // 某些浏览器支持 10MB
-  if (
-    navigator.userAgent.includes("Chrome") ||
-    navigator.userAgent.includes("Edge")
-  ) {
-    available = 10 * 1024 * 1024;
-  }
+  // 获取存储限制信息
+  const storageSettings = settingsManager.getSettingsGroup("storage");
+  const configuredLimit = storageSettings.maxCapacityMB * 1024 * 1024;
+
+  // 估算浏览器实际限制
+  // 统一采用保守 5MB 上限，避免 UA 误判
+  const browserLimit = 5 * 1024 * 1024;
+
+  // 使用较小的限制作为有效限制
+  const effectiveLimit = Math.min(configuredLimit, browserLimit);
 
   try {
     for (let key in localStorage) {
@@ -443,7 +529,12 @@ export function getStorageInfo(): { used: number; available: number } {
     console.error("Error calculating storage:", error);
   }
 
-  return { used, available };
+  return {
+    used,
+    available: effectiveLimit - used,
+    browserLimit,
+    configuredLimit
+  };
 }
 
 // 压缩内容（简单实现，移除多余空格等）
@@ -467,10 +558,17 @@ function compressContent(content: any[]): any[] {
   });
 }
 
+// 手动触发紧急清理
+export function triggerEmergencyCleanup(): boolean {
+  return emergencyCleanup(2 * 1024 * 1024); // 尝试释放2MB
+}
+
 // 获取存储使用百分比
 export function getStorageUsagePercentage(): number {
   const { used, available } = getStorageInfo();
-  return Math.round((used / available) * 100);
+  const total = used + available;
+  if (total === 0) return 0;
+  return Math.round((used / total) * 100);
 }
 
 // 检查是否有足够空间

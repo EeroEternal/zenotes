@@ -48,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import SettingsPanel from "@/components/settings-panel";
+import { triggerEmergencyCleanup, getStorageInfo, getStorageUsagePercentage } from "@/lib/storage";
 import NotesManager from "@/components/notes-manager";
 export default function HomePage() {
   const [selectedNoteId, setSelectedNoteId] = useState<string>("");
@@ -64,6 +65,7 @@ export default function HomePage() {
   const [noteCategory, setNoteCategory] = useState("");
   const [showMetadata, setShowMetadata] = useState(false);
   const [showBatchManager, setShowBatchManager] = useState(false);
+  const [storageError, setStorageError] = useState<string>("");
   const titleInputRef = React.useRef<HTMLInputElement>(null);
 
   // 加载笔记
@@ -102,32 +104,39 @@ export default function HomePage() {
 
   // 创建新笔记
   const handleCreateNote = () => {
-    const newNote = createNote({
-      title: "",
-      content: [
-        {
-          type: "paragraph",
-          children: [{ text: "" }],
-        },
-      ] as Descendant[],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      tags: [],
-      category: "",
-    });
+    try {
+      const newNote = createNote({
+        title: "",
+        content: [
+          {
+            type: "paragraph",
+            children: [{ text: "" }],
+          },
+        ] as Descendant[],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        tags: [],
+        category: "",
+      });
 
-    setCurrentNote(newNote);
-    setSelectedNoteId(newNote.id);
-    setNoteTitle("");
-    setNoteTags([]);
-    setNoteCategory("");
-    setIsEditing(true);
-    setHasUnsavedChanges(false);
+      setCurrentNote(newNote);
+      setSelectedNoteId(newNote.id);
+      setNoteTitle("");
+      setNoteTags([]);
+      setNoteCategory("");
+      setIsEditing(true);
+      setHasUnsavedChanges(false);
+      setStorageError("");
 
-    // 自动聚焦到标题输入框
-    setTimeout(() => {
-      titleInputRef.current?.focus();
-    }, 100);
+      // 自动聚焦到标题输入框
+      setTimeout(() => {
+        titleInputRef.current?.focus();
+      }, 100);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStorageError(msg);
+      alert(msg + "\n\n可以尝试点击上面的 Test Emergency Cleanup 按钮释放空间。");
+    }
   };
 
   // 删除当前笔记
@@ -297,7 +306,12 @@ export default function HomePage() {
 
   // 初始化
   useEffect(() => {
-    handleCreateNote();
+    try {
+      handleCreateNote();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStorageError(msg);
+    }
   }, []);
 
   return (
@@ -430,6 +444,40 @@ export default function HomePage() {
                     </Button>
                   )}
                 </div>
+              </div>
+
+              {/* 临时测试按钮和存储信息 */}
+              <div className="mb-4 p-4 bg-gray-100 rounded">
+                <div className="mb-2">
+                  <strong>Storage Status:</strong> {getStorageUsagePercentage()}% used
+                  ({(getStorageInfo().used / 1024 / 1024).toFixed(2)}MB /
+                  {((getStorageInfo().used + getStorageInfo().available) / 1024 / 1024).toFixed(2)}MB)
+                  {storageError && (
+                    <div className="mt-2 text-red-600">{storageError}</div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    console.log("Triggering emergency cleanup...");
+                    const success = triggerEmergencyCleanup();
+                    alert(success ? "Emergency cleanup successful!" : "Emergency cleanup failed!");
+                    window.location.reload(); // Refresh to see updated storage
+                  }}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 mr-2"
+                >
+                  Test Emergency Cleanup
+                </button>
+                <button
+                  onClick={() => {
+                    const info = getStorageInfo();
+                    const usage = getStorageUsagePercentage();
+                    console.log("Storage Info:", info);
+                    console.log("Usage:", usage + "%");
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Log Storage Info
+                </button>
               </div>
 
               {/* 元数据区域 */}

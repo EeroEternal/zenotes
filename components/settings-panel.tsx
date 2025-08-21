@@ -40,6 +40,7 @@ import {
   DEFAULT_SETTINGS,
   SettingsManager,
 } from "@/lib/settings";
+import { pickDirectoryWithDefault, getSavedDirectory, clearSavedDirectory } from "@/lib/fs-adapter";
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -49,7 +50,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<SettingsType>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [activeTab, setActiveTab] = useState("markdown");
+  const [activeTab, setActiveTab] = useState("storage");
 
   useEffect(() => {
     // 加载当前设置
@@ -183,13 +184,219 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="storage">存储</TabsTrigger>
           <TabsTrigger value="markdown">Markdown</TabsTrigger>
           <TabsTrigger value="images">图片</TabsTrigger>
           <TabsTrigger value="editor">编辑器</TabsTrigger>
           <TabsTrigger value="import">导入</TabsTrigger>
           <TabsTrigger value="export">导出</TabsTrigger>
         </TabsList>
+
+        {/* 存储设置 */}
+        <TabsContent value="storage">
+          <Card>
+            <CardHeader>
+              <CardTitle>存储设置</CardTitle>
+              <CardDescription>配置存储容量和管理选项</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="maxCapacityMB">最大存储容量 (MB)</Label>
+                <div className="flex items-center space-x-4">
+                  <Slider
+                    id="maxCapacityMB"
+                    min={5}
+                    max={1000}
+                    step={5}
+                    value={[settings.storage.maxCapacityMB]}
+                    onValueChange={(value) =>
+                      handleSettingChange("storage", "maxCapacityMB", value[0])
+                    }
+                    className="flex-1"
+                  />
+                  <span className="w-16 text-sm font-medium">
+                    {settings.storage.maxCapacityMB} MB
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  设置应用可使用的最大存储空间
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="maxNoteSizeKB">单个笔记最大大小 (KB)</Label>
+                <div className="flex items-center space-x-4">
+                  <Slider
+                    id="maxNoteSizeKB"
+                    min={100}
+                    max={5000}
+                    step={50}
+                    value={[settings.storage.maxNoteSizeKB]}
+                    onValueChange={(value) =>
+                      handleSettingChange("storage", "maxNoteSizeKB", value[0])
+                    }
+                    className="flex-1"
+                  />
+                  <span className="w-16 text-sm font-medium">
+                    {settings.storage.maxNoteSizeKB} KB
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  限制单个笔记的最大大小
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cleanupThresholdPercent">自动清理阈值 (%)</Label>
+                <div className="flex items-center space-x-4">
+                  <Slider
+                    id="cleanupThresholdPercent"
+                    min={50}
+                    max={95}
+                    step={5}
+                    value={[settings.storage.cleanupThresholdPercent]}
+                    onValueChange={(value) =>
+                      handleSettingChange("storage", "cleanupThresholdPercent", value[0])
+                    }
+                    className="flex-1"
+                  />
+                  <span className="w-16 text-sm font-medium">
+                    {settings.storage.cleanupThresholdPercent}%
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  当存储使用率达到此百分比时自动清理旧笔记
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="enableAutoCleanup">启用自动清理</Label>
+                  <p className="text-xs text-muted-foreground">
+                    存储空间不足时自动删除最旧的笔记
+                  </p>
+                </div>
+                <Switch
+                  id="enableAutoCleanup"
+                  checked={settings.storage.enableAutoCleanup}
+                  onCheckedChange={(checked) =>
+                    handleSettingChange("storage", "enableAutoCleanup", checked)
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="enableCompression">启用内容压缩</Label>
+                  <p className="text-xs text-muted-foreground">
+                    自动压缩笔记内容以节省存储空间
+                  </p>
+                </div>
+                <Switch
+                  id="enableCompression"
+                  checked={settings.storage.enableCompression}
+                  onCheckedChange={(checked) =>
+                    handleSettingChange("storage", "enableCompression", checked)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="preferredStorageType">存储类型</Label>
+                <Select
+                  value={settings.storage.preferredStorageType}
+                  onValueChange={(value: "localStorage" | "indexedDB" | "fileSystem") =>
+                    handleSettingChange("storage", "preferredStorageType", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="localStorage">LocalStorage (默认)</SelectItem>
+                    <SelectItem value="indexedDB">IndexedDB (更大容量)</SelectItem>
+                    <SelectItem value="fileSystem">文件系统 (实验性)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  选择数据存储方式，IndexedDB支持更大容量
+                </p>
+              </div>
+
+              {/* 文件系统选项：选择/查看目录，仅当选中文件系统时显示 */}
+              {settings.storage.preferredStorageType === "fileSystem" && (
+                <div className="space-y-2">
+                  <Label>文件系统目录</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        const res = await pickDirectoryWithDefault("Mynotes");
+                        if (res.error) {
+                          alert(res.error);
+                          return;
+                        }
+                        if (res.granted) {
+                          alert(`已选择目录：${res.name || "Mynotes"}`);
+                        } else {
+                          alert("未授予读写权限，请重试");
+                        }
+                      }}
+                    >
+                      选择目录…
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={async () => {
+                        const saved = await getSavedDirectory();
+                        if (saved.handle && saved.granted) {
+                          alert(`当前目录：${saved.name}`);
+                        } else {
+                          alert("尚未选择目录或没有权限");
+                        }
+                      }}
+                    >
+                      查看当前目录
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={async () => {
+                        if (confirm("清除已保存的目录授权？下次需重新选择。")) {
+                          await clearSavedDirectory();
+                          alert("已清除目录授权");
+                        }
+                      }}
+                    >
+                      清除授权
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    选择一个本地文件夹作为笔记保存位置。将自动在该文件夹下创建 “Mynotes” 子目录。
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="customStorageDirectory">自定义存储目录</Label>
+                <Input
+                  id="customStorageDirectory"
+                  value={settings.storage.customStorageDirectory}
+                  onChange={(e) =>
+                    handleSettingChange("storage", "customStorageDirectory", e.target.value)
+                  }
+                  placeholder="留空使用默认位置"
+                />
+                <p className="text-xs text-muted-foreground">
+                  指定自定义存储目录（仅在支持文件系统API的浏览器中有效）
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Markdown设置 */}
         <TabsContent value="markdown">
@@ -208,7 +415,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                     onChange={(e) =>
                       handleSettingChange("markdown", "sourceDirectory", e.target.value)
                     }
-                    placeholder="/Users/xinference/Sync/md"
+                    placeholder="/Users/mac-m4/sync/md"
                   />
                   <Button variant="outline" size="icon">
                     <FolderOpen className="h-4 w-4" />

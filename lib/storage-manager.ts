@@ -1,4 +1,5 @@
 import { Note, NoteMetadata } from "@/types/note";
+import { settingsManager } from "@/lib/settings";
 
 const STORAGE_KEY = "mynotes_data";
 const METADATA_KEY = "mynotes_metadata";
@@ -55,6 +56,16 @@ export function cleanupStorage(targetFreeSpace: number = 500 * 1024): number {
 }
 
 /**
+ * 获取实际浏览器存储限制
+ */
+export function getBrowserStorageLimit(): number {
+  // 返回保守的浏览器限制估计，避免复杂的检测逻辑
+  // 注意：大多数浏览器对 localStorage 的限制约为 5MB（按源），
+  // 采用统一的 5MB 作为保守上限，避免误判导致“看起来有空间但实际写入失败”的问题。
+  return 5 * 1024 * 1024;
+}
+
+/**
  * 获取存储空间使用详情
  */
 export function getStorageDetails(): {
@@ -63,15 +74,24 @@ export function getStorageDetails(): {
   largestNotes: Array<{ id: string; title: string; size: number }>;
   availableSpace: number;
   usedPercentage: number;
+  browserLimit: number;
+  configuredLimit: number;
 } {
   const metadataStr = localStorage.getItem(METADATA_KEY);
+  const storageSettings = settingsManager.getSettingsGroup("storage");
+  const configuredLimit = storageSettings.maxCapacityMB * 1024 * 1024;
+  const browserLimit = getBrowserStorageLimit();
+  const effectiveLimit = Math.min(configuredLimit, browserLimit);
+
   if (!metadataStr) {
     return {
       totalNotes: 0,
       totalSize: 0,
       largestNotes: [],
-      availableSpace: 5 * 1024 * 1024,
+      availableSpace: effectiveLimit,
       usedPercentage: 0,
+      browserLimit,
+      configuredLimit,
     };
   }
 
@@ -102,9 +122,8 @@ export function getStorageDetails(): {
   noteSizes.sort((a, b) => b.size - a.size);
   const largestNotes = noteSizes.slice(0, 5);
 
-  // 估算可用空间（Chrome/Edge 通常是 10MB，其他浏览器是 5MB）
-  const isChromium = navigator.userAgent.includes("Chrome") || navigator.userAgent.includes("Edge");
-  const totalAvailable = isChromium ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+  // 使用有效的存储限制（配置限制和浏览器限制的较小值）
+  const totalAvailable = effectiveLimit;
 
   return {
     totalNotes: metadata.length,
@@ -112,6 +131,8 @@ export function getStorageDetails(): {
     largestNotes: largestNotes,
     availableSpace: totalAvailable - totalSize,
     usedPercentage: Math.round((totalSize / totalAvailable) * 100),
+    browserLimit,
+    configuredLimit,
   };
 }
 
@@ -246,6 +267,77 @@ export function smartCleanup(requiredSpace: number): boolean {
 
     console.log(`Smart cleanup: deleted ${toDelete.length} notes, freed ${(freedSpace / 1024).toFixed(2)}KB`);
     return true;
+  }
+
+  return false;
+}
+
+/**
+ * 紧急清理：删除最大的笔记直到有足够空间
+ */
+export function emergencyCleanup(requiredSpace: number): boolean {
+  console.log(`Starting emergency cleanup, need ${(requiredSpace / 1024 / 1024).toFixed(2)}MB...`);
+
+  const details = getStorageDetails();
+  console.log(`Current storage: ${(details.totalSize / 1024 / 1024).toFixed(2)}MB used, ${(details.availableSpace / 1024 / 1024).toFixed(2)}MB available`);
+
+  const metadataStr = localStorage.getItem(METADATA_KEY);
+  if (!metadataStr) {
+    console.log("No metadata found for emergency cleanup");
+    return false;
+  }
+
+  const metadata: any[] = JSON.parse(metadataStr);
+  console.log(`Found ${metadata.length} notes for emergency cleanup`);
+
+  // 获取所有笔记的大小信息
+  const noteSizes = metadata.map((note) => {
+    const noteKey = `${STORAGE_KEY}_${note.id}`;
+    const noteData = localStorage.getItem(noteKey);
+    const size = noteData ? new Blob([noteData]).size : 0;
+
+    return {
+      id: note.id,
+      title: note.title,
+      size: size,
+      updatedAt: note.updatedAt
+    };
+  });
+
+  // 按大小排序（大的优先删除）
+  noteSizes.sort((a, b) => b.size - a.size);
+
+  let freedSpace = 0;
+  const toDelete: string[] = [];
+  const targetSpace = requiredSpace - details.availableSpace;
+
+  // 删除最大的笔记直到有足够空间（不设上限）
+  for (const noteInfo of noteSizes) {
+    if (freedSpace >= targetSpace) {
+      break;
+    }
+
+    toDelete.push(noteInfo.id);
+    freedSpace += noteInfo.size;
+
+    console.log(
+      `Emergency deletion: ${noteInfo.title} (${(noteInfo.size / 1024).toFixed(2)}KB)`
+    );
+  }
+
+  // 执行删除
+  if (toDelete.length > 0) {
+    const keepMetadata = metadata.filter((note) => !toDelete.includes(note.id));
+
+    for (const id of toDelete) {
+      localStorage.removeItem(`${STORAGE_KEY}_${id}`);
+    }
+
+    localStorage.setItem(METADATA_KEY, JSON.stringify(keepMetadata));
+
+    console.log(`Emergency cleanup: deleted ${toDelete.length} notes, freed ${(freedSpace / 1024).toFixed(2)}KB`);
+    // 释放了目标空间则成功，否则如果我们删除了所有可能的笔记也返回是否释放了至少50%
+    return freedSpace >= targetSpace || freedSpace >= targetSpace * 0.5;
   }
 
   return false;

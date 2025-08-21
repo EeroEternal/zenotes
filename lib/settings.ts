@@ -3,7 +3,7 @@ import { z } from "zod";
 // 设置数据结构
 export const SettingsSchema = z.object({
   markdown: z.object({
-    sourceDirectory: z.string().default("/Users/xinference/Sync/md"),
+    sourceDirectory: z.string().default("/Users/mac-m4/sync/md"),
     importSubdirectories: z.boolean().default(true),
     autoProcessImages: z.boolean().default(true),
   }),
@@ -15,6 +15,15 @@ export const SettingsSchema = z.object({
     quality: z.number().min(1).max(100).default(90),
     keepOriginalNames: z.boolean().default(false),
     organizeByDate: z.boolean().default(false),
+  }),
+  storage: z.object({
+    maxCapacityMB: z.number().min(5).max(1000).default(50),
+    enableAutoCleanup: z.boolean().default(true),
+    cleanupThresholdPercent: z.number().min(50).max(95).default(85),
+    preferredStorageType: z.enum(["localStorage", "indexedDB", "fileSystem"]).default("localStorage"),
+    customStorageDirectory: z.string().default(""),
+    enableCompression: z.boolean().default(true),
+    maxNoteSizeKB: z.number().min(100).max(5000).default(500),
   }),
   editor: z.object({
     autoSave: z.boolean().default(true),
@@ -43,7 +52,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
 // 默认设置
 export const DEFAULT_SETTINGS: Settings = {
   markdown: {
-    sourceDirectory: "/Users/xinference/Sync/md",
+    sourceDirectory: "/Users/mac-m4/sync/md",
     importSubdirectories: true,
     autoProcessImages: true,
   },
@@ -55,6 +64,15 @@ export const DEFAULT_SETTINGS: Settings = {
     quality: 90,
     keepOriginalNames: false,
     organizeByDate: false,
+  },
+  storage: {
+    maxCapacityMB: 50,
+    enableAutoCleanup: true,
+    cleanupThresholdPercent: 85,
+    preferredStorageType: "localStorage",
+    customStorageDirectory: "",
+    enableCompression: true,
+    maxNoteSizeKB: 500,
   },
   editor: {
     autoSave: true,

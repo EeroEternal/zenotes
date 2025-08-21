@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MarkdownImporter, markdownToSlate } from "@/lib/markdown-importer";
 import { createNote, saveNote, getStorageInfo } from "@/lib/storage";
-import { getSettings } from "@/lib/settings";
+import { getSettings, settingsManager } from "@/lib/settings";
 import { Note } from "@/types/note";
 
 interface ImportDialogProps {
@@ -160,7 +160,8 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
         });
 
         if (!response.ok) {
-          throw new Error("Import failed");
+          const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(errorData.error || `Import failed: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -244,14 +245,47 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
           f.name.match(/\.(md|markdown)$/i),
         );
 
-        const results: ImportResult[] = markdownFiles.map((file) => ({
-          path: file.webkitRelativePath || file.name,
-          title: file.name.replace(/\.(md|markdown)$/i, ""),
-          status: "pending" as const,
-          images: 0,
-        }));
+        // 获取基础目录路径
+        let baseDirectory = "";
+        if (markdownFiles.length > 0) {
+          const firstFile = markdownFiles[0];
+          const relativePath = firstFile.webkitRelativePath || firstFile.name;
+          // 从相对路径中提取基础目录名
+          const pathParts = relativePath.split('/');
+          if (pathParts.length > 1) {
+            baseDirectory = pathParts[0];
+          }
+        }
+
+        const results: ImportResult[] = markdownFiles.map((file) => {
+          const relativePath = file.webkitRelativePath || file.name;
+          // 构建绝对路径：使用用户选择的目录路径
+          let absolutePath = relativePath;
+          
+          // 如果有sourcePath设置，使用它作为基础路径
+          if (sourcePath && baseDirectory) {
+            // 移除相对路径中的基础目录部分，因为sourcePath已经包含了完整路径
+            const pathWithoutBase = relativePath.replace(new RegExp(`^${baseDirectory}/`), '');
+            absolutePath = `${sourcePath}/${pathWithoutBase}`;
+          } else if (baseDirectory) {
+            // 如果没有sourcePath，尝试使用常见的路径
+            absolutePath = `/Users/mac-m4/sync/${relativePath}`;
+          }
+          
+          return {
+            path: absolutePath,
+            title: file.name.replace(/\.(md|markdown)$/i, ""),
+            status: "pending" as const,
+            images: 0,
+          };
+        });
 
         setImportResults(results);
+        
+        // 如果没有设置sourcePath，自动设置为检测到的基础路径
+        if (!sourcePath && baseDirectory) {
+          setSourcePath(`/Users/mac-m4/sync/${baseDirectory}`);
+        }
       }
     };
 
@@ -334,7 +368,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
                 已用: {(storageInfo.used / 1024 / 1024).toFixed(1)} MB
               </span>
               <span>
-                可用: {(storageInfo.available / 1024 / 1024).toFixed(0)} MB
+                总容量: {(settingsManager.getSettingsGroup("storage").maxCapacityMB)} MB
               </span>
             </div>
           </Card>
