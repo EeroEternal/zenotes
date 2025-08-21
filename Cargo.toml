@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "apps/desktop-gpui",
+]
+
+resolver = "2"
+
