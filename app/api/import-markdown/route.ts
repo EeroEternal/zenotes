@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { getServerImagesDir } from "@/lib/server-settings";
 import crypto from "crypto";
 
 // 生成唯一的文件名
@@ -32,7 +33,7 @@ async function processImage(
       }
 
       const buffer = await response.arrayBuffer();
-      const targetDir = path.join(process.cwd(), imageDir);
+      const targetDir = getServerImagesDir();
       await fs.mkdir(targetDir, { recursive: true });
 
       const urlPath = new URL(imagePath).pathname;
@@ -77,7 +78,7 @@ async function processImage(
     }
 
     // 复制图片到目标目录
-    const targetDir = path.join(process.cwd(), imageDir);
+    const targetDir = getServerImagesDir();
     await fs.mkdir(targetDir, { recursive: true });
 
     const newFilename = generateUniqueFilename(fullImagePath);

@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# rust / cargo
+/target/
+**/target/
+Cargo.lock
+!.github/**
+
+
+# web static images (note images are stored outside repo now)
+/public/images/

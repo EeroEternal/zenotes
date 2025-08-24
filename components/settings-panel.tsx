@@ -326,20 +326,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
 
               {/* 文件系统选项：选择/查看目录，仅当选中文件系统时显示 */}
               {settings.storage.preferredStorageType === "fileSystem" && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>文件系统目录</Label>
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
                       onClick={async () => {
-                        const res = await pickDirectoryWithDefault("Mynotes");
+                        const res = await pickDirectoryWithDefault(settings.storage.noteFolderName || "Mynotes");
                         if (res.error) {
                           alert(res.error);
                           return;
                         }
                         if (res.granted) {
-                          alert(`已选择目录：${res.name || "Mynotes"}`);
+                          alert(`已选择目录：${res.name || settings.storage.noteFolderName || "Mynotes"}`);
                         } else {
                           alert("未授予读写权限，请重试");
                         }
@@ -374,8 +374,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                       清除授权
                     </Button>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="noteFolderName">默认笔记子目录</Label>
+                      <Input
+                        id="noteFolderName"
+                        value={settings.storage.noteFolderName}
+                        onChange={(e) => handleSettingChange("storage", "noteFolderName", e.target.value)}
+                        placeholder="Mynotes"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="imageFolderName">默认图片子目录</Label>
+                      <Input
+                        id="imageFolderName"
+                        value={settings.images.imageFolderName}
+                        onChange={(e) => handleSettingChange("images", "imageFolderName", e.target.value)}
+                        placeholder="images"
+                      />
+                    </div>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    选择一个本地文件夹作为笔记保存位置。将自动在该文件夹下创建 “Mynotes” 子目录。
+                    选择一个本地文件夹作为根目录；将自动在该目录下创建默认的笔记/图片子目录。
                   </p>
                 </div>
               )}

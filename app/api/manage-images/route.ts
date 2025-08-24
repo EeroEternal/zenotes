@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { getServerImagesDir, getFsBaseUrl } from "@/lib/server-settings";
 import crypto from "crypto";
 
 // 生成唯一的文件名
@@ -31,15 +32,15 @@ async function handleLocalFile(filePath: string): Promise<string | null> {
     const fileName = path.basename(filePath);
     const uniqueName = generateUniqueFilename(fileName);
 
-    // 保存到public/images目录
-    const publicDir = path.join(process.cwd(), "public", "images");
-    await ensureDir(publicDir);
+    // 保存到 File System 根下的默认图片目录
+    const imagesDir = getServerImagesDir();
+    await ensureDir(imagesDir);
 
-    const newPath = path.join(publicDir, uniqueName);
+    const newPath = path.join(imagesDir, uniqueName);
     await fs.writeFile(newPath, fileBuffer);
 
-    // 返回可访问的URL路径
-    return `/images/${uniqueName}`;
+    // 返回可访问的URL路径（由 /api/fs-images/[name] 提供）
+    return `${getFsBaseUrl()}/${uniqueName}`;
   } catch (error) {
     console.error(`Failed to handle local file ${filePath}:`, error);
     return null;
@@ -75,11 +76,11 @@ async function handleWebImage(imageUrl: string): Promise<string | null> {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 保存到public/images目录
-    const publicDir = path.join(process.cwd(), "public", "images");
-    await ensureDir(publicDir);
+    // 保存到 File System 根下的默认图片目录
+    const imagesDir = getServerImagesDir();
+    await ensureDir(imagesDir);
 
-    const newPath = path.join(publicDir, uniqueName);
+    const newPath = path.join(imagesDir, uniqueName);
     await fs.writeFile(newPath, buffer);
 
     // 返回可访问的URL路径
@@ -120,13 +121,13 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(base64Data, "base64");
 
         const uniqueName = generateUniqueFilename(`image.${ext}`);
-        const publicDir = path.join(process.cwd(), "public", "images");
-        await ensureDir(publicDir);
+        const imagesDir = getServerImagesDir();
+        await ensureDir(imagesDir);
 
-        const newPath = path.join(publicDir, uniqueName);
+        const newPath = path.join(imagesDir, uniqueName);
         await fs.writeFile(newPath, buffer);
 
-        newUrl = `/images/${uniqueName}`;
+        newUrl = `${getFsBaseUrl()}/${uniqueName}`;
       }
     }
 

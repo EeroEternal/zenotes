@@ -15,6 +15,7 @@ export const SettingsSchema = z.object({
     quality: z.number().min(1).max(100).default(90),
     keepOriginalNames: z.boolean().default(false),
     organizeByDate: z.boolean().default(false),
+    imageFolderName: z.string().default("images"), // relative to note directory when using File System
   }),
   storage: z.object({
     maxCapacityMB: z.number().min(5).max(1000).default(50),
@@ -24,6 +25,7 @@ export const SettingsSchema = z.object({
     customStorageDirectory: z.string().default(""),
     enableCompression: z.boolean().default(true),
     maxNoteSizeKB: z.number().min(100).max(5000).default(500),
+    noteFolderName: z.string().default("Mynotes"),
   }),
   editor: z.object({
     autoSave: z.boolean().default(true),
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
     quality: 90,
     keepOriginalNames: false,
     organizeByDate: false,
+    imageFolderName: "images",
   },
   storage: {
     maxCapacityMB: 50,
@@ -73,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
     customStorageDirectory: "",
     enableCompression: true,
     maxNoteSizeKB: 500,
+    noteFolderName: "Mynotes",
   },
   editor: {
     autoSave: true,
