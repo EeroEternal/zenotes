@@ -1,0 +1,144 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 20% 97%;
+    --foreground: 220 15% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 20%;
+
+    --primary: 45 100% 51%;
+    --primary-foreground: 220 15% 15%;
+
+    --secondary: 40 30% 94%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 40 15% 92%;
+    --muted-foreground: 220 10% 50%;
+
+    --accent: 45 90% 88%;
+    --accent-foreground: 220 15% 20%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 20% 88%;
+    --input: 40 20% 92%;
+    --ring: 45 100% 51%;
+
+    --radius: 0.75rem;
+
+    /* Custom colors for notes */
+    --note-yellow: 48 96% 89%;
+    --note-green: 142 50% 88%;
+    --note-blue: 210 60% 90%;
+    --note-pink: 340 60% 92%;
+    --note-purple: 270 50% 92%;
+    --note-white: 0 0% 100%;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(220 15% 20% / 0.03);
+    --shadow-card: 0 1px 3px 0 hsl(220 15% 20% / 0.06), 0 1px 2px -1px hsl(220 15% 20% / 0.06);
+    --shadow-card-hover: 0 4px 12px -2px hsl(220 15% 20% / 0.1), 0 2px 4px -2px hsl(220 15% 20% / 0.06);
+    --shadow-dialog: 0 20px 40px -8px hsl(220 15% 20% / 0.15);
+  }
+
+  .dark {
+    --background: 220 15% 10%;
+    --foreground: 40 20% 95%;
+
+    --card: 220 15% 14%;
+    --card-foreground: 40 20% 95%;
+
+    --popover: 220 15% 14%;
+    --popover-foreground: 40 20% 95%;
+
+    --primary: 45 100% 51%;
+    --primary-foreground: 220 15% 10%;
+
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 40 20% 90%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 40 10% 60%;
+
+    --accent: 220 15% 20%;
+    --accent-foreground: 40 20% 95%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 18%;
+    --ring: 45 100% 51%;
+
+    --note-yellow: 48 60% 20%;
+    --note-green: 142 40% 18%;
+    --note-blue: 210 40% 20%;
+    --note-pink: 340 40% 20%;
+    --note-purple: 270 40% 20%;
+    --note-white: 220 15% 16%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Noto Sans SC', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .masonry {
+    column-count: 2;
+    column-gap: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .masonry {
+      column-count: 3;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .masonry {
+      column-count: 4;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .masonry {
+      column-count: 5;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .masonry {
+      column-count: 6;
+    }
+  }
+
+  .masonry-item {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  .line-clamp-6 {
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
