@@ -1,10 +1,12 @@
 import { Note, NoteColor } from '@/types/note';
 import { Pin, MoreVertical } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
 
 interface NoteCardProps {
   note: Note;
   onClick: () => void;
   onTogglePin: () => void;
+  onTagClick?: (tag: string) => void;
 }
 
 const colorClasses: Record<NoteColor, string> = {
@@ -16,7 +18,7 @@ const colorClasses: Record<NoteColor, string> = {
   purple: 'bg-note-purple',
 };
 
-export function NoteCard({ note, onClick, onTogglePin }: NoteCardProps) {
+export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
   const isLongContent = note.content.length > 150;
 
   return (
@@ -48,6 +50,24 @@ export function NoteCard({ note, onClick, onTogglePin }: NoteCardProps) {
           <span className="text-xs text-muted-foreground mt-2 inline-block">
             点击查看更多...
           </span>
+        )}
+
+        {note.tags?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {note.tags.slice(0, 4).map((t) => (
+              <Badge
+                key={t}
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTagClick?.(t);
+                }}
+                className="cursor-pointer"
+              >
+                {t}
+              </Badge>
+            ))}
+          </div>
         )}
       </div>
       

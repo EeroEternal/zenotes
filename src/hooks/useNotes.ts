@@ -1,9 +1,69 @@
 import { useMemo, useCallback } from "react";
 import type { Note, NoteColor } from "@/types/note";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { arrayMove } from "@dnd-kit/sortable";
 
 import * as api from "@/lib/api";
+
+const PINNED_CONTAINER_ID = "pinned";
+const UNPINNED_CONTAINER_ID = "unpinned";
+
+function computeMove(
+  notes: Note[],
+  activeId: string,
+  overId: string,
+  destPinned: boolean,
+): {
+  nextNotes: Note[];
+  pinnedIds: string[];
+  unpinnedIds: string[];
+  pinnedChanged: boolean;
+} {
+  const pinnedNotes = notes.filter((n) => n.pinned).sort((a, b) => a.position - b.position);
+  const unpinnedNotes = notes.filter((n) => !n.pinned).sort((a, b) => a.position - b.position);
+
+  const active = notes.find((n) => n.id === activeId);
+  if (!active) {
+    return {
+      nextNotes: notes,
+      pinnedIds: pinnedNotes.map((n) => n.id),
+      unpinnedIds: unpinnedNotes.map((n) => n.id),
+      pinnedChanged: false,
+    };
+  }
+
+  const sourcePinned = active.pinned;
+  const pinnedChanged = sourcePinned !== destPinned;
+
+  const srcArr = sourcePinned ? pinnedNotes : unpinnedNotes;
+  const dstArr = destPinned ? pinnedNotes : unpinnedNotes;
+
+  const srcWithout = srcArr.filter((n) => n.id !== activeId);
+  const dstWithout = destPinned === sourcePinned ? srcWithout : dstArr;
+
+  const insertIndex =
+    overId === PINNED_CONTAINER_ID || overId === UNPINNED_CONTAINER_ID
+      ? dstWithout.length
+      : Math.max(
+          0,
+          dstWithout.findIndex((n) => n.id === overId),
+        );
+
+  const moved: Note = { ...active, pinned: destPinned };
+
+  const dstNext = [...dstWithout.slice(0, insertIndex), moved, ...dstWithout.slice(insertIndex)];
+
+  const nextPinned = (destPinned ? dstNext : srcWithout)
+    .map((n, idx) => ({ ...n, pinned: true, position: idx + 1 }));
+  const nextUnpinned = (!destPinned ? dstNext : srcWithout)
+    .map((n, idx) => ({ ...n, pinned: false, position: idx + 1 }));
+
+  return {
+    nextNotes: [...nextPinned, ...nextUnpinned],
+    pinnedIds: nextPinned.map((n) => n.id),
+    unpinnedIds: nextUnpinned.map((n) => n.id),
+    pinnedChanged,
+  };
+}
 
 export function useNotes() {
   const queryClient = useQueryClient();
@@ -32,27 +92,28 @@ export function useNotes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
   });
 
-  const reorderMutation = useMutation({
-    mutationFn: ({ pinned, orderedIds }: { pinned: boolean; orderedIds: string[] }) =>
-      api.reorderNotes(pinned, orderedIds),
-    onMutate: async ({ pinned, orderedIds }) => {
+  const moveMutation = useMutation({
+    mutationFn: async (vars: {
+      activeId: string;
+      overId: string;
+      destPinned: boolean;
+      pinnedIds: string[];
+      unpinnedIds: string[];
+      pinnedChanged: boolean;
+    }) => {
+      if (vars.pinnedChanged) {
+        await api.updateNote(vars.activeId, { pinned: vars.destPinned });
+      }
+      await Promise.all([
+        api.reorderNotes(true, vars.pinnedIds),
+        api.reorderNotes(false, vars.unpinnedIds),
+      ]);
+    },
+    onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: ["notes"] });
       const prev = queryClient.getQueryData<Note[]>(["notes"]) ?? [];
-
-      const pinnedNotes = prev.filter((n) => n.pinned);
-      const unpinnedNotes = prev.filter((n) => !n.pinned);
-      const target = pinned ? pinnedNotes : unpinnedNotes;
-
-      const byId = new Map(target.map((n) => [n.id, n]));
-      const reordered = orderedIds
-        .map((id, idx) => {
-          const n = byId.get(id);
-          return n ? { ...n, position: idx + 1 } : undefined;
-        })
-        .filter(Boolean) as Note[];
-
-      const next = pinned ? [...reordered, ...unpinnedNotes] : [...pinnedNotes, ...reordered];
-      queryClient.setQueryData(["notes"], next);
+      const { nextNotes } = computeMove(prev, vars.activeId, vars.overId, vars.destPinned);
+      queryClient.setQueryData(["notes"], nextNotes);
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
@@ -86,17 +147,12 @@ export function useNotes() {
     [notes, updateNoteMutation],
   );
 
-  const reorderNotes = useCallback(
-    (activeId: string, overId: string, isPinned: boolean) => {
-      const target = notes.filter((n) => n.pinned === isPinned);
-      const oldIndex = target.findIndex((n) => n.id === activeId);
-      const newIndex = target.findIndex((n) => n.id === overId);
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      const reordered = arrayMove(target, oldIndex, newIndex);
-      reorderMutation.mutate({ pinned: isPinned, orderedIds: reordered.map((n) => n.id) });
+  const moveNote = useCallback(
+    (activeId: string, overId: string, destPinned: boolean) => {
+      const computed = computeMove(notes, activeId, overId, destPinned);
+      moveMutation.mutate({ activeId, overId, destPinned, ...computed });
     },
-    [notes, reorderMutation],
+    [notes, moveMutation],
   );
 
   const searchNotes = useCallback(
@@ -127,7 +183,7 @@ export function useNotes() {
     updateNote,
     deleteNote,
     togglePin,
-    reorderNotes,
+    moveNote,
     searchNotes,
     isLoading: notesQuery.isLoading,
     isError: notesQuery.isError,

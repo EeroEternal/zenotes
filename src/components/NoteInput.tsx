@@ -10,12 +10,19 @@ export function NoteInput({ onAddNote }: NoteInputProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [tagsText, setTagsText] = useState('');
 
   const handleSubmit = () => {
     if (content.trim() || title.trim()) {
-      onAddNote(content.trim(), title.trim() || undefined, undefined, []);
+      const tags = tagsText
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      onAddNote(content.trim(), title.trim() || undefined, undefined, tags);
       setTitle('');
       setContent('');
+      setTagsText('');
       setIsExpanded(false);
     }
   };
@@ -79,6 +86,19 @@ export function NoteInput({ onAddNote }: NoteInputProps) {
             text-foreground text-sm leading-relaxed
             placeholder:text-muted-foreground
             outline-none resize-none
+          "
+        />
+        <input
+          type="text"
+          placeholder="标签（逗号分隔）"
+          value={tagsText}
+          onChange={(e) => setTagsText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="
+            w-full px-5 pb-3 bg-transparent
+            text-foreground text-sm
+            placeholder:text-muted-foreground
+            outline-none
           "
         />
         <div className="flex items-center justify-between px-3 py-2 border-t border-border/50">

@@ -2,11 +2,13 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Note, NoteColor } from '@/types/note';
 import { Pin, MoreVertical, GripVertical } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
 
 interface SortableNoteCardProps {
   note: Note;
   onClick: () => void;
   onTogglePin: () => void;
+  onTagClick?: (tag: string) => void;
   isDragging?: boolean;
 }
 
@@ -19,7 +21,7 @@ const colorClasses: Record<NoteColor, string> = {
   purple: 'bg-note-purple',
 };
 
-export function SortableNoteCard({ note, onClick, onTogglePin }: SortableNoteCardProps) {
+export function SortableNoteCard({ note, onClick, onTogglePin, onTagClick }: SortableNoteCardProps) {
   const {
     attributes,
     listeners,
@@ -88,6 +90,24 @@ export function SortableNoteCard({ note, onClick, onTogglePin }: SortableNoteCar
           <span className="text-xs text-muted-foreground mt-2 inline-block">
             点击查看更多...
           </span>
+        )}
+
+        {note.tags?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {note.tags.slice(0, 4).map((t) => (
+              <Badge
+                key={t}
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTagClick?.(t);
+                }}
+                className="cursor-pointer"
+              >
+                {t}
+              </Badge>
+            ))}
+          </div>
         )}
       </div>
       

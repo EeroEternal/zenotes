@@ -10,6 +10,7 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  useDroppable,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -19,12 +20,33 @@ import {
 import { useState } from 'react';
 import { NoteCard } from './NoteCard';
 
+const PINNED_CONTAINER_ID = 'pinned';
+const UNPINNED_CONTAINER_ID = 'unpinned';
+
+function DroppableArea({
+  id,
+  children,
+  className,
+}: {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const { setNodeRef } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={className}>
+      {children}
+    </div>
+  );
+}
+
 interface NotesGridProps {
   pinnedNotes: Note[];
   unpinnedNotes: Note[];
   onNoteClick: (note: Note) => void;
   onTogglePin: (id: string) => void;
-  onReorder: (activeId: string, overId: string, isPinned: boolean) => void;
+  onMove: (activeId: string, overId: string, destPinned: boolean) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 export function NotesGrid({ 
@@ -32,7 +54,8 @@ export function NotesGrid({
   unpinnedNotes, 
   onNoteClick, 
   onTogglePin,
-  onReorder 
+  onMove,
+  onTagClick,
 }: NotesGridProps) {
   const [activeNote, setActiveNote] = useState<Note | null>(null);
 
@@ -56,96 +79,96 @@ export function NotesGrid({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveNote(null);
-    
-    if (!over || active.id === over.id) return;
 
-    const isPinned = pinnedNotes.some(n => n.id === active.id);
-    onReorder(active.id as string, over.id as string, isPinned);
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    if (activeId === overId) return;
+
+    const overNote = [...pinnedNotes, ...unpinnedNotes].find((n) => n.id === overId);
+    const destPinned =
+      overId === PINNED_CONTAINER_ID ? true : overId === UNPINNED_CONTAINER_ID ? false : Boolean(overNote?.pinned);
+
+    onMove(activeId, overId, destPinned);
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-8">
-      {/* Pinned Notes */}
-      {pinnedNotes.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
-            已固定
-          </h2>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext 
-              items={pinnedNotes.map(n => n.id)} 
-              strategy={rectSortingStrategy}
-            >
-              <div className="masonry">
-                {pinnedNotes.map((note) => (
-                  <SortableNoteCard
-                    key={note.id}
-                    note={note}
-                    onClick={() => onNoteClick(note)}
-                    onTogglePin={() => onTogglePin(note.id)}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-            <DragOverlay>
-              {activeNote && activeNote.pinned && (
-                <NoteCard 
-                  note={activeNote} 
-                  onClick={() => {}} 
-                  onTogglePin={() => {}}
-                />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {/* Pinned Notes */}
+        <DroppableArea id={PINNED_CONTAINER_ID} className="min-h-[24px]">
+          {(pinnedNotes.length > 0 || unpinnedNotes.length > 0) && (
+            <div className="mb-8">
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
+                已固定
+              </h2>
+              {pinnedNotes.length > 0 ? (
+                <SortableContext items={pinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
+                  <div className="masonry">
+                    {pinnedNotes.map((note) => (
+                      <SortableNoteCard
+                        key={note.id}
+                        note={note}
+                        onClick={() => onNoteClick(note)}
+                        onTogglePin={() => onTogglePin(note.id)}
+                        onTagClick={onTagClick}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  拖到这里以固定
+                </div>
               )}
-            </DragOverlay>
-          </DndContext>
-        </div>
-      )}
-
-      {/* Other Notes */}
-      {unpinnedNotes.length > 0 && (
-        <div>
-          {pinnedNotes.length > 0 && (
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
-              其他笔记
-            </h2>
+            </div>
           )}
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext 
-              items={unpinnedNotes.map(n => n.id)} 
-              strategy={rectSortingStrategy}
-            >
-              <div className="masonry">
-                {unpinnedNotes.map((note) => (
-                  <SortableNoteCard
-                    key={note.id}
-                    note={note}
-                    onClick={() => onNoteClick(note)}
-                    onTogglePin={() => onTogglePin(note.id)}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-            <DragOverlay>
-              {activeNote && !activeNote.pinned && (
-                <NoteCard 
-                  note={activeNote} 
-                  onClick={() => {}} 
-                  onTogglePin={() => {}}
-                />
+        </DroppableArea>
+
+        {/* Other Notes */}
+        <DroppableArea id={UNPINNED_CONTAINER_ID} className="min-h-[24px]">
+          {(pinnedNotes.length > 0 || unpinnedNotes.length > 0) && (
+            <div>
+              {pinnedNotes.length > 0 && (
+                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
+                  其他笔记
+                </h2>
               )}
-            </DragOverlay>
-          </DndContext>
-        </div>
-      )}
+              {unpinnedNotes.length > 0 ? (
+                <SortableContext items={unpinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
+                  <div className="masonry">
+                    {unpinnedNotes.map((note) => (
+                      <SortableNoteCard
+                        key={note.id}
+                        note={note}
+                        onClick={() => onNoteClick(note)}
+                        onTogglePin={() => onTogglePin(note.id)}
+                        onTagClick={onTagClick}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                  拖到这里以取消固定
+                </div>
+              )}
+            </div>
+          )}
+        </DroppableArea>
+
+        <DragOverlay>
+          {activeNote && (
+            <NoteCard note={activeNote} onClick={() => {}} onTogglePin={() => {}} onTagClick={onTagClick} />
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {/* Empty State */}
       {pinnedNotes.length === 0 && unpinnedNotes.length === 0 && (
