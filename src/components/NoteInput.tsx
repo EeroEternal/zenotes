@@ -3,7 +3,7 @@ import { Check, Pen, Image, Plus } from 'lucide-react';
 import { NoteColor } from '@/types/note';
 
 interface NoteInputProps {
-  onAddNote: (content: string, title?: string, color?: NoteColor) => void;
+  onAddNote: (content: string, title?: string, color?: NoteColor, tags?: string[]) => void;
 }
 
 export function NoteInput({ onAddNote }: NoteInputProps) {
@@ -13,7 +13,7 @@ export function NoteInput({ onAddNote }: NoteInputProps) {
 
   const handleSubmit = () => {
     if (content.trim() || title.trim()) {
-      onAddNote(content.trim(), title.trim() || undefined);
+      onAddNote(content.trim(), title.trim() || undefined, undefined, []);
       setTitle('');
       setContent('');
       setIsExpanded(false);

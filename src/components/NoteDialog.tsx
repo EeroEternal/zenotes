@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Note, NoteColor } from '@/types/note';
 import { X, Pin, Trash2, Palette } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,7 @@ interface NoteDialogProps {
   note: Note | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (id: string, updates: Partial<Omit<Note, 'id' | 'createdAt'>>) => void;
+  onUpdate: (id: string, updates: Partial<Omit<Note, 'id'>>) => void;
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
 }
@@ -45,19 +46,27 @@ export function NoteDialog({
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [tagsText, setTagsText] = useState("");
 
   useEffect(() => {
     if (note) {
       setTitle(note.title || '');
       setContent(note.content);
+      setTagsText((note.tags || []).join(", "));
     }
   }, [note]);
 
   const handleSave = () => {
     if (note) {
+      const tags = tagsText
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+
       onUpdate(note.id, {
         title: title.trim() || undefined,
         content: content.trim(),
+        tags,
       });
     }
     onOpenChange(false);
@@ -106,6 +115,25 @@ export function NoteDialog({
 
         {/* Content */}
         <div className="p-5">
+          {/* Tags */}
+          <div className="mb-3">
+            <input
+              type="text"
+              placeholder="标签（逗号分隔）"
+              value={tagsText}
+              onChange={(e) => setTagsText(e.target.value)}
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            />
+            {note.tags?.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {note.tags.map((t) => (
+                  <Badge key={t} variant="secondary">
+                    {t}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
           <input
             type="text"
             placeholder="标题"
@@ -176,7 +204,7 @@ export function NoteDialog({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
-              编辑于 {note.updatedAt.toLocaleDateString('zh-CN')}
+              编辑于 {new Date(note.updatedAt).toLocaleDateString('zh-CN')}
             </span>
             <button
               onClick={handleSave}

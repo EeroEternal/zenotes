@@ -1,166 +1,123 @@
-import { useState, useCallback } from 'react';
-import { Note, NoteColor } from '@/types/note';
-import { arrayMove } from '@dnd-kit/sortable';
+import { useMemo, useCallback } from "react";
+import type { Note, NoteColor } from "@/types/note";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { arrayMove } from "@dnd-kit/sortable";
 
-const generateId = () => Math.random().toString(36).substring(2, 15);
-
-const sampleNotes: Note[] = [
-  {
-    id: generateId(),
-    title: '关于 AI',
-    content: 'AI 为核心的组织，从组织角度，如果未来决策是 AI 来做，人是 AI 的执行层，会是什么变化',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: true,
-  },
-  {
-    id: generateId(),
-    content: '沉浸于过时技术，而忽视了 AI 的巨大发展',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    title: '思考',
-    content: '这类客户对我们来说，可能是一个门槛低的起步。这也是我们一个特点，最高质量模型的低门槛起步',
-    color: 'yellow',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    content: '跨行业的人，容易对新行业的过时技术着迷',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    title: 'Manus 模式',
-    content: '一堆东西，乱搞，看上去很丰富，总能命中',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    content: '被伤害过的人，会一直想着找回来',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    content: '很多人话多，不愿意安静，是因为年纪大了',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    title: '春江水暖鸭先知',
-    content: '我很喜欢"春江水暖鸭先知"这句话，你要培养对产品的敏锐洞察和对行业趋势的判断，不下水是不可能的，你要天天浸泡，日日夜夜思索。',
-    color: 'green',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    content: '加速运算的思想无非：预处理，分而治之，硬件提升——元宁',
-    color: 'blue',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-  {
-    id: generateId(),
-    title: '视角转换',
-    content: '如果一直盯着一个人的缺点来看，你会发现这个人千疮百孔，无一是处。换个视角，想想"他能做些什么，他能改变些什么"，情况就不一样了。',
-    color: 'white',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pinned: false,
-  },
-];
+import * as api from "@/lib/api";
 
 export function useNotes() {
-  const [notes, setNotes] = useState<Note[]>(sampleNotes);
+  const queryClient = useQueryClient();
 
-  const addNote = useCallback((content: string, title?: string, color: NoteColor = 'white') => {
-    const newNote: Note = {
-      id: generateId(),
-      title,
-      content,
-      color,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      pinned: false,
-    };
-    setNotes(prev => [newNote, ...prev]);
-    return newNote;
-  }, []);
+  const notesQuery = useQuery({
+    queryKey: ["notes"],
+    queryFn: api.fetchNotes,
+    initialData: [],
+  });
 
-  const updateNote = useCallback((id: string, updates: Partial<Omit<Note, 'id' | 'createdAt'>>) => {
-    setNotes(prev => prev.map(note => 
-      note.id === id 
-        ? { ...note, ...updates, updatedAt: new Date() }
-        : note
-    ));
-  }, []);
+  const notes = notesQuery.data;
 
-  const deleteNote = useCallback((id: string) => {
-    setNotes(prev => prev.filter(note => note.id !== id));
-  }, []);
+  const addNoteMutation = useMutation({
+    mutationFn: (input: { content: string; title?: string; color?: NoteColor; tags?: string[] }) =>
+      api.createNote(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
 
-  const togglePin = useCallback((id: string) => {
-    setNotes(prev => prev.map(note =>
-      note.id === id
-        ? { ...note, pinned: !note.pinned }
-        : note
-    ));
-  }, []);
+  const updateNoteMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Note> }) => api.updateNote(id, updates),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
 
-  const reorderNotes = useCallback((activeId: string, overId: string, isPinned: boolean) => {
-    setNotes(prev => {
-      const pinnedNotes = prev.filter(n => n.pinned);
-      const unpinnedNotes = prev.filter(n => !n.pinned);
-      
-      const targetArray = isPinned ? pinnedNotes : unpinnedNotes;
-      const oldIndex = targetArray.findIndex(n => n.id === activeId);
-      const newIndex = targetArray.findIndex(n => n.id === overId);
-      
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      
-      const reordered = arrayMove(targetArray, oldIndex, newIndex);
-      
-      if (isPinned) {
-        return [...reordered, ...unpinnedNotes];
-      } else {
-        return [...pinnedNotes, ...reordered];
-      }
-    });
-  }, []);
+  const deleteNoteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteNote(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
 
-  const searchNotes = useCallback((query: string) => {
-    if (!query.trim()) return notes;
-    const lowerQuery = query.toLowerCase();
-    return notes.filter(note => 
-      note.content.toLowerCase().includes(lowerQuery) ||
-      note.title?.toLowerCase().includes(lowerQuery)
-    );
-  }, [notes]);
+  const reorderMutation = useMutation({
+    mutationFn: ({ pinned, orderedIds }: { pinned: boolean; orderedIds: string[] }) =>
+      api.reorderNotes(pinned, orderedIds),
+    onMutate: async ({ pinned, orderedIds }) => {
+      await queryClient.cancelQueries({ queryKey: ["notes"] });
+      const prev = queryClient.getQueryData<Note[]>(["notes"]) ?? [];
 
-  const pinnedNotes = notes.filter(n => n.pinned);
-  const unpinnedNotes = notes.filter(n => !n.pinned);
+      const pinnedNotes = prev.filter((n) => n.pinned);
+      const unpinnedNotes = prev.filter((n) => !n.pinned);
+      const target = pinned ? pinnedNotes : unpinnedNotes;
+
+      const byId = new Map(target.map((n) => [n.id, n]));
+      const reordered = orderedIds
+        .map((id, idx) => {
+          const n = byId.get(id);
+          return n ? { ...n, position: idx + 1 } : undefined;
+        })
+        .filter(Boolean) as Note[];
+
+      const next = pinned ? [...reordered, ...unpinnedNotes] : [...pinnedNotes, ...reordered];
+      queryClient.setQueryData(["notes"], next);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["notes"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
+
+  const addNote = useCallback(
+    (content: string, title?: string, color: NoteColor = "white", tags: string[] = []) => {
+      addNoteMutation.mutate({ content, title, color, tags });
+    },
+    [addNoteMutation],
+  );
+
+  const updateNote = useCallback(
+    (id: string, updates: Partial<Omit<Note, "id">>) => {
+      updateNoteMutation.mutate({ id, updates });
+    },
+    [updateNoteMutation],
+  );
+
+  const deleteNote = useCallback((id: string) => deleteNoteMutation.mutate(id), [deleteNoteMutation]);
+
+  const togglePin = useCallback(
+    (id: string) => {
+      const note = notes.find((n) => n.id === id);
+      if (!note) return;
+      updateNoteMutation.mutate({ id, updates: { pinned: !note.pinned } });
+    },
+    [notes, updateNoteMutation],
+  );
+
+  const reorderNotes = useCallback(
+    (activeId: string, overId: string, isPinned: boolean) => {
+      const target = notes.filter((n) => n.pinned === isPinned);
+      const oldIndex = target.findIndex((n) => n.id === activeId);
+      const newIndex = target.findIndex((n) => n.id === overId);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = arrayMove(target, oldIndex, newIndex);
+      reorderMutation.mutate({ pinned: isPinned, orderedIds: reordered.map((n) => n.id) });
+    },
+    [notes, reorderMutation],
+  );
+
+  const searchNotes = useCallback(
+    (query: string) => {
+      if (!query.trim()) return notes;
+      const lowerQuery = query.toLowerCase();
+      return notes.filter(
+        (note) =>
+          note.content.toLowerCase().includes(lowerQuery) ||
+          note.title?.toLowerCase().includes(lowerQuery) ||
+          note.tags.some((t) => t.toLowerCase().includes(lowerQuery)),
+      );
+    },
+    [notes],
+  );
+
+  const pinnedNotes = useMemo(() => notes.filter((n) => n.pinned).sort((a, b) => a.position - b.position), [notes]);
+  const unpinnedNotes = useMemo(
+    () => notes.filter((n) => !n.pinned).sort((a, b) => a.position - b.position),
+    [notes],
+  );
 
   return {
     notes,
@@ -172,5 +129,7 @@ export function useNotes() {
     togglePin,
     reorderNotes,
     searchNotes,
+    isLoading: notesQuery.isLoading,
+    isError: notesQuery.isError,
   };
 }

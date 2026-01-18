@@ -5,7 +5,9 @@ export interface Note {
   title?: string;
   content: string;
   color: NoteColor;
-  createdAt: Date;
-  updatedAt: Date;
+  tags: string[];
   pinned: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
 }
