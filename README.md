@@ -1,73 +1,63 @@
-# Welcome to your Lovable project
+# MyNotes
 
-## Project info
+一个简洁的笔记应用，支持创建、编辑、删除、置顶、拖拽排序和标签筛选。
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## 技术栈
 
-## How can I edit this code?
+- **前端**: React + TypeScript + Vite + TailwindCSS + shadcn/ui + React Query + dnd-kit
+- **后端**: Rust + Actix-web + SQLx + PostgreSQL
 
-There are several ways of editing your application.
+## 项目结构
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+mynotes/
+├── frontend/    # React 前端
+├── backend/     # Rust 后端
+└── README.md
 ```
 
-**Edit a file directly in GitHub**
+## 快速开始
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 前置条件
 
-**Use GitHub Codespaces**
+- Node.js >= 18
+- Rust >= 1.75
+- PostgreSQL >= 15
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### 1. 配置数据库
 
-## What technologies are used for this project?
+```sh
+# 创建数据库
+createdb mynotes
 
-This project is built with:
+# 配置后端环境变量
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填入你的数据库连接信息
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### 2. 启动后端
 
-## How can I deploy this project?
+```sh
+cd backend
+cargo run
+# API 运行在 http://localhost:8081
+```
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### 3. 启动前端
 
-## Can I connect a custom domain to my Lovable project?
+```sh
+cd frontend
+npm install
+npm run dev
+# 前端运行在 http://localhost:8080
+```
 
-Yes, you can!
+## API 接口
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/notes` | 获取所有笔记 |
+| POST | `/api/notes` | 创建笔记 |
+| PATCH | `/api/notes/:id` | 更新笔记 |
+| DELETE | `/api/notes/:id` | 删除笔记 |
+| POST | `/api/notes/reorder` | 重新排序 |
