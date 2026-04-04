@@ -25,15 +25,27 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allow_any_origin()
+            .allowed_origin("http://127.0.0.1:8080")
+            .allowed_origin("http://localhost:8080")
+            .allowed_origin("http://127.0.0.1:8081")
+            .allowed_origin("http://localhost:8081")
+            .allowed_origin("http://127.0.0.1:8082")
+            .allowed_origin("http://localhost:8082")
+            .allowed_origin("http://127.0.0.1:8083")
+            .allowed_origin("http://localhost:8083")
             .allow_any_method()
             .allow_any_header()
+            .supports_credentials()
             .max_age(3600);
 
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
             .app_data(web::Data::new(pool.clone()))
+            .route("/api/auth/register", web::post().to(handlers::register))
+            .route("/api/auth/login", web::post().to(handlers::login))
+            .route("/api/auth/logout", web::post().to(handlers::logout))
+            .route("/api/auth/me", web::get().to(handlers::me))
             .route("/api/notes", web::get().to(handlers::list_notes))
             .route("/api/notes", web::post().to(handlers::create_note))
             .route("/api/notes/{id}", web::patch().to(handlers::update_note))

@@ -71,3 +71,31 @@ pub struct ReorderRequest {
     pub pinned: bool,
     pub ordered_ids: Vec<Uuid>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserRow {
+    pub id: i64,
+    pub username: String,
+    pub email: String,
+    pub password_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserResponse {
+    pub id: i64,
+    pub username: String,
+    pub email: String,
+}
