@@ -45,6 +45,7 @@ interface NotesGridProps {
   unpinnedNotes: Note[];
   onNoteClick: (note: Note) => void;
   onTogglePin: (id: string) => void;
+  onDelete: (id: string) => void;
   onMove: (activeId: string, overId: string, destPinned: boolean) => void;
   onTagClick?: (tag: string) => void;
 }
@@ -54,6 +55,7 @@ export function NotesGrid({
   unpinnedNotes, 
   onNoteClick, 
   onTogglePin,
+  onDelete,
   onMove,
   onTagClick,
 }: NotesGridProps) {
@@ -103,20 +105,21 @@ export function NotesGrid({
       >
         {/* Pinned Notes */}
         <DroppableArea id={PINNED_CONTAINER_ID} className="min-h-[24px]">
-          {(pinnedNotes.length > 0 || unpinnedNotes.length > 0) && (
+          {(pinnedNotes.length > 0 || (activeNote && unpinnedNotes.length > 0)) && (
             <div className="mb-8">
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
                 已固定
               </h2>
               {pinnedNotes.length > 0 ? (
                 <SortableContext items={pinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
-                  <div className="masonry">
+                  <div className="masonry-grid">
                     {pinnedNotes.map((note) => (
                       <SortableNoteCard
                         key={note.id}
                         note={note}
                         onClick={() => onNoteClick(note)}
                         onTogglePin={() => onTogglePin(note.id)}
+                        onDelete={() => onDelete(note.id)}
                         onTagClick={onTagClick}
                       />
                     ))}
@@ -133,7 +136,7 @@ export function NotesGrid({
 
         {/* Other Notes */}
         <DroppableArea id={UNPINNED_CONTAINER_ID} className="min-h-[24px]">
-          {(pinnedNotes.length > 0 || unpinnedNotes.length > 0) && (
+          {(unpinnedNotes.length > 0 || (activeNote && pinnedNotes.length > 0)) && (
             <div>
               {pinnedNotes.length > 0 && (
                 <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
@@ -142,7 +145,7 @@ export function NotesGrid({
               )}
               {unpinnedNotes.length > 0 ? (
                 <SortableContext items={unpinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
-                  <div className="masonry">
+                  <div className="masonry-grid">
                     {unpinnedNotes.map((note) => (
                       <SortableNoteCard
                         key={note.id}

@@ -1,6 +1,12 @@
 import type { Note } from "@/types/note";
 
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+
+export type ImportGoogleKeepResult = {
+  totalFiles: number;
+  importedCount: number;
+  skippedCount: number;
+};
 
 export async function fetchNotes(): Promise<Note[]> {
   const res = await fetch(`${API_BASE}/notes`);
@@ -45,4 +51,12 @@ export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promi
     body: JSON.stringify({ pinned, orderedIds }),
   });
   if (!res.ok) throw new Error("reorder_failed");
+}
+
+export async function importGoogleKeep(): Promise<ImportGoogleKeepResult> {
+  const res = await fetch(`${API_BASE}/notes/import/google-keep`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("import_google_keep_failed");
+  return res.json();
 }

@@ -122,6 +122,11 @@ export function useNotes() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
   });
 
+  const importGoogleKeepMutation = useMutation({
+    mutationFn: () => api.importGoogleKeep(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+  });
+
   const addNote = useCallback(
     (content: string, title?: string, color: NoteColor = "white", tags: string[] = []) => {
       addNoteMutation.mutate({ content, title, color, tags });
@@ -155,6 +160,8 @@ export function useNotes() {
     [notes, moveMutation],
   );
 
+  const importGoogleKeep = useCallback(() => importGoogleKeepMutation.mutateAsync(), [importGoogleKeepMutation]);
+
   const searchNotes = useCallback(
     (query: string) => {
       if (!query.trim()) return notes;
@@ -184,7 +191,9 @@ export function useNotes() {
     deleteNote,
     togglePin,
     moveNote,
+    importGoogleKeep,
     searchNotes,
+    isImportingKeep: importGoogleKeepMutation.isPending,
     isLoading: notesQuery.isLoading,
     isError: notesQuery.isError,
   };

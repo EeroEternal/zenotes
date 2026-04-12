@@ -3,6 +3,7 @@ mod handlers;
 mod models;
 
 use actix_cors::Cors;
+use actix_files::Files;
 use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 
 #[tokio::main]
@@ -14,7 +15,7 @@ async fn main() -> std::io::Result<()> {
         std::env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env or environment");
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port: u16 = std::env::var("PORT")
-        .unwrap_or_else(|_| "8081".to_string())
+        .unwrap_or_else(|_| "3035".to_string())
         .parse()
         .expect("PORT must be a number");
 
@@ -48,10 +49,18 @@ async fn main() -> std::io::Result<()> {
             .route("/api/auth/me", web::get().to(handlers::me))
             .route("/api/notes", web::get().to(handlers::list_notes))
             .route("/api/notes", web::post().to(handlers::create_note))
+            .route(
+                "/api/notes/import/google-keep",
+                web::post().to(handlers::import_google_keep),
+            )
             .route("/api/notes/{id}", web::patch().to(handlers::update_note))
             .route("/api/notes/{id}", web::delete().to(handlers::delete_note))
-            .route("/api/notes/reorder", web::post().to(handlers::reorder_notes))
+            .route(
+                "/api/notes/reorder",
+                web::post().to(handlers::reorder_notes),
+            )
             .route("/api/health", web::get().to(health))
+            .service(Files::new("/static", "../static").show_files_listing())
     })
     .bind((host.as_str(), port))?
     .run()

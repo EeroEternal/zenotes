@@ -10,12 +10,12 @@ interface NoteCardProps {
 }
 
 const colorClasses: Record<NoteColor, string> = {
-  white: 'bg-note-white',
-  yellow: 'bg-note-yellow',
-  green: 'bg-note-green',
-  blue: 'bg-note-blue',
-  pink: 'bg-note-pink',
-  purple: 'bg-note-purple',
+  white: 'bg-note-default',
+  yellow: 'bg-note-cream',
+  green: 'bg-note-mint',
+  blue: 'bg-note-sky',
+  pink: 'bg-note-rose',
+  purple: 'bg-note-lavender',
 };
 
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
@@ -24,33 +24,34 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
   return (
     <div
       className={`
-        masonry-item group cursor-pointer
+        masonry-item group relative rounded-2xl cursor-pointer
+        border border-border/40 hover:border-border/80
+        transition-all duration-300 ease-out hover:-translate-y-1
         ${colorClasses[note.color]}
-        rounded-lg border border-border/60
-        shadow-card hover:shadow-card-hover
-        transition-all duration-200
-        overflow-hidden
-        animate-fade-in
+        shadow-note hover:shadow-note-hover
+        animate-scale-in overflow-hidden
       `}
       onClick={onClick}
     >
-      <div className="p-4">
+      {/* Pin indicator */}
+      {note.pinned && (
+        <div className="absolute top-2 right-2 z-10 w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg animate-pop">
+          <Pin className="w-3.5 h-3.5 text-primary-foreground fill-current" />
+        </div>
+      )}
+
+      <div className="p-4 pb-11">
         {note.title && (
-          <h3 className="font-medium text-foreground mb-2 leading-snug">
+          <h3 className="font-semibold text-foreground pr-6 text-[15px] leading-snug mb-2">
             {note.title}
           </h3>
         )}
         <p className={`
-          text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap
+          text-sm text-foreground/75 whitespace-pre-wrap leading-relaxed
           ${isLongContent ? 'line-clamp-6' : ''}
         `}>
           {note.content}
         </p>
-        {isLongContent && (
-          <span className="text-xs text-muted-foreground mt-2 inline-block">
-            点击查看更多...
-          </span>
-        )}
 
         {note.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -73,9 +74,8 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
       
       {/* Hover Actions */}
       <div className="
-        flex items-center justify-between px-2 py-1.5
-        opacity-0 group-hover:opacity-100 transition-opacity
-        border-t border-border/30
+        absolute bottom-2 left-2 right-2 flex items-center gap-0.5
+        opacity-0 group-hover:opacity-100 transition-opacity duration-300
       ">
         <button
           onClick={(e) => {
@@ -83,19 +83,16 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             onTogglePin();
           }}
           className={`
-            p-2 rounded-full transition-colors
-            ${note.pinned 
-              ? 'text-primary hover:bg-primary/10' 
-              : 'text-muted-foreground hover:bg-muted'
-            }
+            p-2 rounded-lg hover:bg-foreground/8 transition-all duration-200
+            ${note.pinned ? 'text-primary' : 'text-muted-foreground'}
           `}
           title={note.pinned ? '取消固定' : '固定'}
         >
-          <Pin className="w-4 h-4" fill={note.pinned ? 'currentColor' : 'none'} />
+          <Pin className={`w-4 h-4 ${note.pinned ? 'fill-current' : ''}`} />
         </button>
         <button
           onClick={(e) => e.stopPropagation()}
-          className="p-2 rounded-full text-muted-foreground hover:bg-muted transition-colors"
+          className="p-2 rounded-lg text-muted-foreground hover:bg-foreground/8 transition-all duration-200 ml-auto"
         >
           <MoreVertical className="w-4 h-4" />
         </button>

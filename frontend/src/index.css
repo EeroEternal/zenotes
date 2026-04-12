@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,86 +6,71 @@
 
 @layer base {
   :root {
-    --background: 40 20% 97%;
-    --foreground: 220 15% 20%;
-
+    --background: 45 30% 97%;
+    --foreground: 25 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 20%;
-
+    --card-foreground: 25 20% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 20%;
-
-    --primary: 45 100% 51%;
-    --primary-foreground: 220 15% 15%;
-
-    --secondary: 40 30% 94%;
-    --secondary-foreground: 220 15% 25%;
-
-    --muted: 40 15% 92%;
-    --muted-foreground: 220 10% 50%;
-
-    --accent: 45 90% 88%;
-    --accent-foreground: 220 15% 20%;
-
-    --destructive: 0 72% 51%;
+    --popover-foreground: 25 20% 12%;
+    --primary: 28 85% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 35 25% 93%;
+    --secondary-foreground: 25 20% 20%;
+    --muted: 35 20% 91%;
+    --muted-foreground: 25 10% 45%;
+    --accent: 28 80% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
+    --border: 35 20% 88%;
+    --input: 35 20% 88%;
+    --ring: 28 85% 52%;
+    --radius: 1.25rem;
 
-    --border: 40 20% 88%;
-    --input: 40 20% 92%;
-    --ring: 45 100% 51%;
+    --note-default: 0 0% 100%;
+    --note-coral: 12 90% 95%;
+    --note-lavender: 265 55% 95%;
+    --note-mint: 155 50% 93%;
+    --note-cream: 42 70% 95%;
+    --note-sky: 200 75% 94%;
+    --note-rose: 345 60% 95%;
+    --note-peach: 22 85% 94%;
 
-    --radius: 0.75rem;
-
-    /* Custom colors for notes */
-    --note-yellow: 48 96% 89%;
-    --note-green: 142 50% 88%;
-    --note-blue: 210 60% 90%;
-    --note-pink: 340 60% 92%;
-    --note-purple: 270 50% 92%;
-    --note-white: 0 0% 100%;
-
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(220 15% 20% / 0.03);
-    --shadow-card: 0 1px 3px 0 hsl(220 15% 20% / 0.06), 0 1px 2px -1px hsl(220 15% 20% / 0.06);
-    --shadow-card-hover: 0 4px 12px -2px hsl(220 15% 20% / 0.1), 0 2px 4px -2px hsl(220 15% 20% / 0.06);
-    --shadow-dialog: 0 20px 40px -8px hsl(220 15% 20% / 0.15);
+    --shadow-sm: 0 1px 2px 0 hsl(25 20% 12% / 0.03);
+    --shadow-card: 0 4px 12px -2px hsl(25 20% 12% / 0.08), 0 2px 4px -2px hsl(25 20% 12% / 0.04);
+    --shadow-card-hover: 0 12px 24px -4px hsl(25 20% 12% / 0.1), 0 4px 8px -2px hsl(25 20% 12% / 0.06);
+    --shadow-dialog: 0 24px 48px -8px hsl(25 20% 12% / 0.12), 0 8px 16px -4px hsl(25 20% 12% / 0.08);
   }
 
   .dark {
-    --background: 220 15% 10%;
+    --background: 25 15% 8%;
     --foreground: 40 20% 95%;
-
-    --card: 220 15% 14%;
+    --card: 25 15% 12%;
     --card-foreground: 40 20% 95%;
-
-    --popover: 220 15% 14%;
+    --popover: 25 15% 12%;
     --popover-foreground: 40 20% 95%;
-
-    --primary: 45 100% 51%;
-    --primary-foreground: 220 15% 10%;
-
-    --secondary: 220 15% 18%;
+    --primary: 28 85% 55%;
+    --primary-foreground: 25 15% 8%;
+    --secondary: 25 12% 16%;
     --secondary-foreground: 40 20% 90%;
-
-    --muted: 220 15% 18%;
-    --muted-foreground: 40 10% 60%;
-
-    --accent: 220 15% 20%;
-    --accent-foreground: 40 20% 95%;
-
-    --destructive: 0 62% 50%;
+    --muted: 25 12% 18%;
+    --muted-foreground: 30 15% 55%;
+    --accent: 28 80% 58%;
+    --accent-foreground: 25 15% 8%;
+    --destructive: 0 62.8% 45%;
     --destructive-foreground: 0 0% 100%;
+    --border: 25 12% 20%;
+    --input: 25 12% 20%;
+    --ring: 28 85% 55%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 18%;
-    --ring: 45 100% 51%;
-
-    --note-yellow: 48 60% 20%;
-    --note-green: 142 40% 18%;
-    --note-blue: 210 40% 20%;
-    --note-pink: 340 40% 20%;
-    --note-purple: 270 40% 20%;
-    --note-white: 220 15% 16%;
+    --note-default: 25 15% 14%;
+    --note-coral: 12 45% 16%;
+    --note-lavender: 265 30% 16%;
+    --note-mint: 155 30% 14%;
+    --note-cream: 42 35% 15%;
+    --note-sky: 200 40% 15%;
+    --note-rose: 345 35% 16%;
+    --note-peach: 22 45% 15%;
   }
 }
 
@@ -95,46 +80,78 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Noto Sans SC', system-ui, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3 {
+    font-family: 'DM Serif Display', serif;
   }
 }
 
 @layer utilities {
-  .masonry {
+  .note-shadow {
+    box-shadow: var(--shadow-md);
+  }
+
+  .note-shadow-hover {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .note-shadow-active {
+    box-shadow: var(--shadow-xl);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+  }
+}
+
+@layer components {
+  .masonry-grid {
     column-count: 2;
     column-gap: 1rem;
   }
 
   @media (min-width: 640px) {
-    .masonry {
-      column-count: 3;
+    .masonry-grid {
+      column-count: 2;
+      column-gap: 1rem;
     }
   }
 
   @media (min-width: 768px) {
-    .masonry {
-      column-count: 4;
+    .masonry-grid {
+      column-count: 3;
+      column-gap: 1rem;
     }
   }
 
   @media (min-width: 1024px) {
-    .masonry {
-      column-count: 5;
+    .masonry-grid {
+      column-count: 4;
+      column-gap: 1.25rem;
     }
   }
 
   @media (min-width: 1280px) {
-    .masonry {
-      column-count: 6;
+    .masonry-grid {
+      column-count: 5;
+      column-gap: 1.25rem;
     }
   }
 
   .masonry-item {
     break-inside: avoid;
     margin-bottom: 1rem;
+    display: inline-block;
+    width: 100%;
   }
 
+  .glass-effect {
+    @apply bg-background/70 backdrop-blur-xl;
+  }
+  
   .line-clamp-6 {
     display: -webkit-box;
     -webkit-line-clamp: 6;

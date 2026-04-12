@@ -7,13 +7,21 @@ build/
 
 # misc
 .DS_Store
+**/.DS_Store
 *.pem
+
+# ides
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files
 .env*
@@ -30,3 +38,4 @@ Cargo.lock
 /data/
 *.sqlite
 *.sqlite3
+keep/

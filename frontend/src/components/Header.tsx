@@ -1,63 +1,97 @@
-import { Search, Menu, RefreshCw, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { Download, NotebookPen, Settings, LogOut, User } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
+  onImportKeep: () => void;
+  isImportingKeep: boolean;
+  // Kept for prop compatibility but not used in UI since Search is moved to Index
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
-export function Header({ searchQuery, onSearchChange }: HeaderProps) {
-  const [isFocused, setIsFocused] = useState(false);
-
+export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-50 bg-card border-b border-border">
-      <div className="flex items-center h-16 px-4 gap-4">
-        {/* Logo */}
-        <button className="p-2 rounded-full hover:bg-muted transition-colors">
-          <Menu className="w-5 h-5 text-muted-foreground" />
-        </button>
+    <header className="sticky top-0 z-40 glass-effect border-b border-border/30">
+      <div className="container mx-auto px-6 h-20 flex items-center justify-between">
         
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <span className="text-primary-foreground font-semibold text-sm">N</span>
+        {/* Logo and Title */}
+        <div className="flex items-center gap-4 cursor-pointer">
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-xl" />
+            <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
+              <NotebookPen className="w-6 h-6 text-primary-foreground" />
+            </div>
           </div>
-          <span className="text-lg font-medium text-foreground hidden sm:block">笔记</span>
-        </div>
-
-        {/* Search Bar */}
-        <div className={`
-          flex-1 max-w-2xl mx-4
-          flex items-center gap-3 px-4 py-2.5
-          rounded-lg transition-all duration-200
-          ${isFocused 
-            ? 'bg-card shadow-card-hover ring-1 ring-border' 
-            : 'bg-muted hover:bg-muted/80'
-          }
-        `}>
-          <Search className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-          <input
-            type="text"
-            placeholder="搜索笔记..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
-          />
-        </div>
-
-        {/* Right Icons */}
-        <div className="flex items-center gap-1">
-          <button className="p-2.5 rounded-full hover:bg-muted transition-colors">
-            <RefreshCw className="w-5 h-5 text-muted-foreground" />
-          </button>
-          <button className="p-2.5 rounded-full hover:bg-muted transition-colors">
-            <Settings className="w-5 h-5 text-muted-foreground" />
-          </button>
-          <div className="w-8 h-8 rounded-full bg-primary/20 ml-2 flex items-center justify-center">
-            <span className="text-sm font-medium text-primary-foreground">U</span>
+          <div>
+            <h1 className="text-2xl font-display text-foreground tracking-tight">
+              MyNotes
+            </h1>
+            <p className="text-xs text-muted-foreground">Capture your thoughts</p>
           </div>
         </div>
+        
+        {/* User Menu / Actions */}
+        <div className="flex items-center gap-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center cursor-pointer border border-primary/10 hover:border-primary/30 hover:shadow-sm transition-all outline-none">
+                <span className="text-sm font-medium text-primary-foreground text-gradient">U</span>
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">User</p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    user@example.com
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer">
+                <User className="mr-2 h-4 w-4" />
+                <span>个人中心</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer">
+                <Settings className="mr-2 h-4 w-4" />
+                <span>设置</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="cursor-pointer"
+                disabled={isImportingKeep}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onImportKeep();
+                }}
+              >
+                {isImportingKeep ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                    <span>导入中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    <span>导入 Keep 笔记</span>
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>退出登录</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        
       </div>
     </header>
   );

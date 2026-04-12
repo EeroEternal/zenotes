@@ -99,3 +99,11 @@ pub struct UserResponse {
     pub username: String,
     pub email: String,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportGoogleKeepResponse {
+    pub total_files: usize,
+    pub imported_count: usize,
+    pub skipped_count: usize,
+}
