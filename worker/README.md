@@ -16,10 +16,13 @@ wrangler r2 bucket create mynotes-bodies
 
 ## 本地
 
+首次或清空 `.wrangler` 后，本地 D1 要先跑迁移（`npm run dev` 已自动在启动前执行 `migrate:d1:local`）：
+
 ```bash
-npm run migrate:d1:local
 npm run dev
 ```
+
+若你单独用 `wrangler dev` 而未先迁移，会出现 **`no such table: users` / `notes`**。此时手动执行：`npm run migrate:d1:local`。
 
 默认监听 `http://127.0.0.1:8787`。前端 `vite` 已把 `/api` 代理到该端口。
 
@@ -70,6 +73,15 @@ wrangler d1 execute mynotes-db --remote --file=out/migration/d1-import.sql
 需先在 **Settings → Secrets and variables → Actions** 配置：`DATABASE_URL`、`R2_*`、`CLOUDFLARE_API_TOKEN`（需含 **D1 编辑** 等与 `wrangler d1 execute --remote` 匹配权限）。可选秘密见 workflow 文件顶部注释。
 
 **注意**：Runner 必须能直连 PostgreSQL；若腾讯云数据库**仅 VPC 内**，GitHub 托管 runner 连不上，需改用 **self-hosted runner** 放在内网，或临时开公网并限制来源 IP（仍不够稳时优先 self-hosted）。
+
+## Argon2 旧密码在免费 Worker 上无法登录
+
+从 SQLite 迁出的 `password_hash` 多为 **Argon2id**。默认 **不在 Worker 内调用** `argon2Verify`（避免免费套餐长时间卡住并误判），遇到 Argon2 会直接返回 **503** 与说明。处理方式二选一：
+
+1. **（推荐）** 在本机执行：  
+   `node scripts/d1-set-password-sha256.mjs 你的用户名 你的新密码`  
+   按输出运行 **`wrangler d1 execute mynotes-db --remote --command="..."`**，将库中密码改为与 Worker 一致的 **SHA256**；之后用新密码登录。  
+2. 仅在确有高 CPU、且需用**原明文密码**尝试校验 Argon2 时：在 `wrangler.jsonc` 的 `vars` 中设置 **`ALLOW_ARGON2_VERIFY": "true"`** 并重新部署（仍可能因参数过重在边缘失败）。
 
 ## Google Keep 导入
 

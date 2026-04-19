@@ -1,4 +1,7 @@
 import type { Note } from "@/types/note";
+import { ApiError, throwIfNotOk } from "@/lib/api-error";
+
+const AUTH_FETCH_MS = 25_000;
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
@@ -16,32 +19,68 @@ export type CurrentUser = {
   email: string;
 };
 
+export { ApiError };
+
 export async function fetchAuthMe(): Promise<CurrentUser | null> {
   const res = await fetch(`${API_BASE}/auth/me`, fetchOpts);
   if (res.status === 401) return null;
-  if (!res.ok) throw new Error("auth_me_failed");
+  await throwIfNotOk(res);
   return res.json();
 }
 
 export async function login(username: string, password: string): Promise<CurrentUser> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    ...fetchOpts,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!res.ok) throw new Error("login_failed");
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/login`, {
+      ...fetchOpts,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      signal: AbortSignal.timeout(AUTH_FETCH_MS),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError("登录请求超时，请检查网络后重试");
+    }
+    throw e;
+  }
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function register(input: {
+  username: string;
+  email: string;
+  password: string;
+}): Promise<CurrentUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/register`, {
+      ...fetchOpts,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(AUTH_FETCH_MS),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError("注册请求超时，请检查网络后重试");
+    }
+    throw e;
+  }
+  await throwIfNotOk(res);
   return res.json();
 }
 
 export async function logout(): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/logout`, { ...fetchOpts, method: "POST" });
-  if (!res.ok) throw new Error("logout_failed");
+  await throwIfNotOk(res);
 }
 
 export async function fetchNotes(): Promise<Note[]> {
   const res = await fetch(`${API_BASE}/notes`, fetchOpts);
-  if (!res.ok) throw new Error("fetch_notes_failed");
+  if (res.status === 401) return [];
+  await throwIfNotOk(res);
   return res.json();
 }
 
@@ -57,7 +96,7 @@ export async function createNote(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error("create_note_failed");
+  await throwIfNotOk(res);
   return res.json();
 }
 
@@ -68,13 +107,14 @@ export async function updateNote(id: string, updates: Partial<Note>): Promise<No
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
-  if (!res.ok) throw new Error("update_note_failed");
+  await throwIfNotOk(res);
   return res.json();
 }
 
 export async function deleteNote(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/notes/${id}`, { ...fetchOpts, method: "DELETE" });
-  if (!res.ok && res.status !== 204) throw new Error("delete_note_failed");
+  if (res.ok || res.status === 204) return;
+  await throwIfNotOk(res);
 }
 
 export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promise<void> {
@@ -84,7 +124,7 @@ export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pinned, orderedIds }),
   });
-  if (!res.ok) throw new Error("reorder_failed");
+  await throwIfNotOk(res);
 }
 
 export async function importGoogleKeep(files: { raw: string }[]): Promise<ImportGoogleKeepResult> {
@@ -94,6 +134,6 @@ export async function importGoogleKeep(files: { raw: string }[]): Promise<Import
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ files }),
   });
-  if (!res.ok) throw new Error("import_google_keep_failed");
+  await throwIfNotOk(res);
   return res.json();
 }

@@ -4,19 +4,14 @@ export interface Env {
   DB: D1Database;
   NOTES: R2Bucket;
   ALLOWED_ORIGINS?: string;
-  DEFAULT_USER_ID?: string;
+  /** 设为 "true" 时才在 Worker 内调用 argon2Verify（付费/高 CPU 场景）；默认不调用，避免免费套餐长时间卡住 */
+  ALLOW_ARGON2_VERIFY?: string;
 }
+
+const ARGON2_MIGRATION_MSG =
+  "此账号仍为旧版 Argon2 密码，免费 Worker 无法在边缘完成校验。请在电脑终端进入 worker 目录执行：node scripts/d1-set-password-sha256.mjs 你的用户名 新密码，将打印的 wrangler d1 execute … --remote 命令执行一遍（需 wrangler login），然后用新密码登录。";
 
 const SESSION_COOKIE = "mynotes_session";
-
-function defaultUserId(env: Env): number {
-  const v = env.DEFAULT_USER_ID;
-  if (v) {
-    const n = parseInt(v, 10);
-    if (!Number.isNaN(n)) return n;
-  }
-  return 1;
-}
 
 function corsOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("Origin");
@@ -46,18 +41,6 @@ async function sha256Hex(password: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function passwordMatches(plain: string, storedHash: string, sha256HexResult: string): Promise<boolean> {
-  if (storedHash === sha256HexResult) return true;
-  if (storedHash.startsWith("$argon2")) {
-    try {
-      return await argon2Verify({ password: plain, hash: storedHash });
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
 function sessionUserId(request: Request): number | null {
   const cookie = request.headers.get("Cookie") || "";
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
@@ -66,11 +49,30 @@ function sessionUserId(request: Request): number | null {
   return Number.isNaN(id) ? null : id;
 }
 
-function sessionCookie(userId: number): string {
-  return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`;
+/**
+ * 线上：apex / www 页面请求 api 子域属于「跨源」fetch，须 SameSite=None + Secure，否则 Chrome 等不带上会话 Cookie。
+ * Domain=zenotes.site 让 zenotes.site 与 api.zenotes.site 共享同一块 Cookie。
+ */
+function sessionCookie(userId: number, request: Request): string {
+  const url = new URL(request.url);
+  const maxAge = 60 * 60 * 24 * 7;
+  if (url.protocol === "https:") {
+    const host = url.hostname;
+    const domain =
+      host === "api.zenotes.site" || host === "www.zenotes.site" ? "; Domain=zenotes.site" : "";
+    return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}${domain}`;
+  }
+  return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-function clearSessionCookie(): string {
+function clearSessionCookie(request: Request): string {
+  const url = new URL(request.url);
+  if (url.protocol === "https:") {
+    const host = url.hostname;
+    const domain =
+      host === "api.zenotes.site" || host === "www.zenotes.site" ? "; Domain=zenotes.site" : "";
+    return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0${domain}`;
+  }
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
@@ -134,7 +136,6 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
-    const uid = defaultUserId(env);
 
     try {
       if (path === "/" && request.method === "GET") {
@@ -166,7 +167,7 @@ export default {
       }
       if (path === "/api/auth/logout" && request.method === "POST") {
         const h = corsHeaders(env, request, { "Content-Type": "application/json" });
-        h.append("Set-Cookie", clearSessionCookie());
+        h.append("Set-Cookie", clearSessionCookie(request));
         return new Response(JSON.stringify({ message: "已退出登录" }), { headers: h });
       }
       if (path === "/api/auth/me" && request.method === "GET") {
@@ -174,22 +175,42 @@ export default {
       }
 
       if (path === "/api/notes" && request.method === "GET") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
         return listNotes(env, request, uid);
       }
       if (path === "/api/notes" && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
         return createNote(request, env, uid);
       }
 
       if (path === "/api/notes/reorder" && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
         return reorderNotes(request, env, uid);
       }
 
       if (path === "/api/notes/import/google-keep" && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
         return importGoogleKeep(request, env, uid);
       }
 
       const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)$/);
       if (noteIdMatch) {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
         const id = noteIdMatch[1];
         if (request.method === "PATCH") {
           return updateNote(request, env, uid, id);
@@ -267,7 +288,7 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
   }
 
   const h = corsHeaders(env, request, { "Content-Type": "application/json" });
-  h.append("Set-Cookie", sessionCookie(row.id));
+  h.append("Set-Cookie", sessionCookie(row.id, request));
   return new Response(
     JSON.stringify({ id: row.id, username: row.username, email: row.email }),
     { headers: h },
@@ -278,7 +299,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as { username?: string; password?: string };
   const username = (body.username ?? "").trim();
   const plain = body.password ?? "";
-  const hash = await sha256Hex(plain);
+  const sha = await sha256Hex(plain);
 
   const row = await env.DB.prepare(
     "SELECT id, username, email, password_hash FROM users WHERE username = ?",
@@ -286,12 +307,45 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     .bind(username)
     .first<{ id: number; username: string; email: string; password_hash: string }>();
 
-  if (!row || !(await passwordMatches(plain, row.password_hash, hash))) {
+  if (!row) {
+    return json(env, request, { error: "Invalid credentials" }, { status: 401 });
+  }
+
+  const ph = row.password_hash;
+
+  if (ph === sha) {
+    // 已是 Worker 使用的 SHA256
+  } else if (ph.startsWith("$argon2")) {
+    if (env.ALLOW_ARGON2_VERIFY !== "true") {
+      return json(
+        env,
+        request,
+        { error: "argon2_unavailable", message: ARGON2_MIGRATION_MSG },
+        { status: 503 },
+      );
+    }
+    let ok = false;
+    try {
+      ok = await argon2Verify({ password: plain, hash: ph });
+    } catch (e) {
+      console.error("argon2Verify failed (常见原因：免费 Worker CPU 不足以完成 Argon2id 校验)", e);
+      return json(
+        env,
+        request,
+        { error: "argon2_unavailable", message: ARGON2_MIGRATION_MSG },
+        { status: 503 },
+      );
+    }
+    if (!ok) {
+      return json(env, request, { error: "Invalid credentials" }, { status: 401 });
+    }
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(sha, row.id).run();
+  } else {
     return json(env, request, { error: "Invalid credentials" }, { status: 401 });
   }
 
   const h = corsHeaders(env, request, { "Content-Type": "application/json" });
-  h.append("Set-Cookie", sessionCookie(row.id));
+  h.append("Set-Cookie", sessionCookie(row.id, request));
   return new Response(
     JSON.stringify({ id: row.id, username: row.username, email: row.email }),
     { headers: h },

@@ -20,7 +20,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as api from "@/lib/api";
+import { ApiError } from "@/lib/api-error";
 import { toast } from "sonner";
+
+const ARGON2_TOAST =
+  "此账号为旧版 Argon2 密码：请在本地 worker 目录执行 node scripts/d1-set-password-sha256.mjs 用户名 新密码，再执行打印出的 wrangler d1 execute，然后用新密码登录。";
+
+function toastAuthError(err: unknown, fallback: string) {
+  if (err instanceof ApiError) {
+    const m = err.message.trim();
+    toast.error(m === "argon2_unavailable" ? ARGON2_TOAST : err.message);
+    return;
+  }
+  toast.error(fallback);
+}
 
 interface HeaderProps {
   onImportKeep: () => void;
@@ -32,8 +45,10 @@ interface HeaderProps {
 export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
   const queryClient = useQueryClient();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
+  const [regEmail, setRegEmail] = useState("");
 
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -46,13 +61,30 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
     mutationFn: () => api.login(loginUser.trim(), loginPass),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
       setLoginOpen(false);
       setLoginPass("");
       toast.success("已登录");
     },
-    onError: () => {
-      toast.error("用户名或密码错误");
+    onError: (err) => toastAuthError(err, "登录失败"),
+  });
+
+  const registerMut = useMutation({
+    mutationFn: () =>
+      api.register({
+        username: loginUser.trim(),
+        email: regEmail.trim(),
+        password: loginPass,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      setLoginOpen(false);
+      setLoginPass("");
+      setRegEmail("");
+      toast.success("注册成功，已登录");
     },
+    onError: (err) => toastAuthError(err, "注册失败"),
   });
 
   const logoutMut = useMutation({
@@ -105,6 +137,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                   className="cursor-pointer"
                   onClick={(e) => {
                     e.preventDefault();
+                    setAuthTab("login");
                     setLoginOpen(true);
                   }}
                 >
@@ -122,10 +155,10 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
-                disabled={isImportingKeep}
+                disabled={isImportingKeep || !me}
                 onClick={(e) => {
                   e.preventDefault();
-                  onImportKeep();
+                  if (me) onImportKeep();
                 }}
               >
                 {isImportingKeep ? (
@@ -143,10 +176,9 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="cursor-pointer text-destructive focus:text-destructive"
-                disabled={!me}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (me) logoutMut.mutate();
+                  logoutMut.mutate();
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -157,11 +189,41 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
         </div>
       </div>
 
-      <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
+      <Dialog
+        open={loginOpen}
+        onOpenChange={(open) => {
+          setLoginOpen(open);
+          if (!open) {
+            setAuthTab("login");
+            setLoginPass("");
+            setRegEmail("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>登录</DialogTitle>
+            <DialogTitle>{authTab === "login" ? "登录" : "注册"}</DialogTitle>
           </DialogHeader>
+          <div className="flex gap-2 border-b border-border pb-2">
+            <Button
+              type="button"
+              variant={authTab === "login" ? "secondary" : "ghost"}
+              size="sm"
+              className="flex-1"
+              onClick={() => setAuthTab("login")}
+            >
+              登录
+            </Button>
+            <Button
+              type="button"
+              variant={authTab === "register" ? "secondary" : "ghost"}
+              size="sm"
+              className="flex-1"
+              onClick={() => setAuthTab("register")}
+            >
+              注册
+            </Button>
+          </div>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label htmlFor="login-username">用户名</Label>
@@ -172,12 +234,24 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                 onChange={(e) => setLoginUser(e.target.value)}
               />
             </div>
+            {authTab === "register" && (
+              <div className="grid gap-2">
+                <Label htmlFor="reg-email">邮箱</Label>
+                <Input
+                  id="reg-email"
+                  type="email"
+                  autoComplete="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="login-password">密码</Label>
               <Input
                 id="login-password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete={authTab === "login" ? "current-password" : "new-password"}
                 value={loginPass}
                 onChange={(e) => setLoginPass(e.target.value)}
               />
@@ -187,13 +261,28 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
             <Button type="button" variant="outline" onClick={() => setLoginOpen(false)}>
               取消
             </Button>
-            <Button
-              type="button"
-              disabled={loginMut.isPending || !loginUser.trim() || !loginPass}
-              onClick={() => loginMut.mutate()}
-            >
-              {loginMut.isPending ? "登录中…" : "登录"}
-            </Button>
+            {authTab === "login" ? (
+              <Button
+                type="button"
+                disabled={loginMut.isPending || !loginUser.trim() || !loginPass}
+                onClick={() => loginMut.mutate()}
+              >
+                {loginMut.isPending ? "登录中…" : "登录"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                disabled={
+                  registerMut.isPending ||
+                  !loginUser.trim() ||
+                  !loginPass ||
+                  !regEmail.includes("@")
+                }
+                onClick={() => registerMut.mutate()}
+              >
+                {registerMut.isPending ? "提交中…" : "注册"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
