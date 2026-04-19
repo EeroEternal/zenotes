@@ -11,8 +11,9 @@
 
 ```
 mynotes/
-├── frontend/    # React 前端
-├── backend/     # Rust 后端
+├── frontend/    # React 前端（可部署到 Cloudflare Pages）
+├── backend/     # Rust 后端 + PostgreSQL（本地/VPS）
+├── worker/      # Cloudflare Worker + D1 + R2（见 worker/README.md）
 └── README.md
 ```
 
@@ -51,6 +52,10 @@ npm install
 npm run dev
 # 前端运行在 http://localhost:8080
 ```
+
+## GitHub Actions（Cloudflare Pages）
+
+推送到 `main` 时由 **`.github/workflows/deploy-pages.yml`** 构建 `frontend` 并部署到 Cloudflare Pages。请在仓库 **Settings → Secrets → Actions** 配置 **`CLOUDFLARE_API_TOKEN`**、**`VITE_API_BASE`**（例如 `https://api.zenotes.site/api`）；可选 **`PAGES_PROJECT_NAME`**（默认 `mynotes-web`）。
 
 ## API 接口
 

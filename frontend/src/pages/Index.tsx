@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
 import { NoteInput } from '@/components/NoteInput';
 import { NotesGrid } from '@/components/NotesGrid';
@@ -14,6 +14,7 @@ export default function Index() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const keepInputRef = useRef<HTMLInputElement>(null);
 
   const { 
     notes,
@@ -52,19 +53,34 @@ export default function Index() {
   const filteredPinned = filtered.filter((n) => n.pinned).sort((a, b) => a.position - b.position);
   const filteredUnpinned = filtered.filter((n) => !n.pinned).sort((a, b) => a.position - b.position);
 
-  const handleImportKeep = async () => {
+  const handleImportKeepClick = () => keepInputRef.current?.click();
+
+  const handleKeepFilesChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const list = e.target.files;
+    e.target.value = "";
+    if (!list?.length) return;
     try {
-      const result = await importGoogleKeep();
+      const files = await Promise.all(Array.from(list).map(async (f) => ({ raw: await f.text() })));
+      const result = await importGoogleKeep(files);
       toast.success(`导入完成：新增 ${result.importedCount} 条，跳过 ${result.skippedCount} 条`);
     } catch {
-      toast.error('导入 Google Keep 失败');
+      toast.error("导入 Google Keep 失败");
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
+      <input
+        ref={keepInputRef}
+        type="file"
+        accept=".json,application/json"
+        multiple
+        className="hidden"
+        aria-hidden
+        onChange={handleKeepFilesChange}
+      />
       <Header 
-        onImportKeep={handleImportKeep}
+        onImportKeep={handleImportKeepClick}
         isImportingKeep={isImportingKeep}
       />
       

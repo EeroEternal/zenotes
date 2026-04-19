@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mynotes-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "vars": {
+    "ALLOWED_ORIGINS": "http://localhost:8080,http://127.0.0.1:8080,https://zenotes.site,https://www.zenotes.site",
+    "DEFAULT_USER_ID": "1"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mynotes-db",
+      "database_id": "709d0521-8eae-44e6-b4d6-2dc95396390a"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NOTES",
+      "bucket_name": "mynotes-bodies"
+    }
+  ]
+}

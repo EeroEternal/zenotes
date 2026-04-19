@@ -123,7 +123,7 @@ export function useNotes() {
   });
 
   const importGoogleKeepMutation = useMutation({
-    mutationFn: () => api.importGoogleKeep(),
+    mutationFn: (files: { raw: string }[]) => api.importGoogleKeep(files),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
   });
 
@@ -160,7 +160,10 @@ export function useNotes() {
     [notes, moveMutation],
   );
 
-  const importGoogleKeep = useCallback(() => importGoogleKeepMutation.mutateAsync(), [importGoogleKeepMutation]);
+  const importGoogleKeep = useCallback(
+    (files: { raw: string }[]) => importGoogleKeepMutation.mutateAsync(files),
+    [importGoogleKeepMutation],
+  );
 
   const searchNotes = useCallback(
     (query: string) => {
