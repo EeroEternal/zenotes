@@ -62,9 +62,11 @@ export default function Index() {
     try {
       const files = await Promise.all(Array.from(list).map(async (f) => ({ raw: await f.text() })));
       const result = await importGoogleKeep(files);
-      toast.success(`导入完成：新增 ${result.importedCount} 条，跳过 ${result.skippedCount} 条`);
+      toast.success(
+        `Import complete: added ${result.importedCount}, skipped ${result.skippedCount}`,
+      );
     } catch {
-      toast.error("导入 Google Keep 失败");
+      toast.error("Google Keep import failed");
     }
   };
 
@@ -102,14 +104,14 @@ export default function Index() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              placeholder="搜索笔记..."
+              placeholder="Search notes..."
               className="w-full py-4 pl-14 pr-12 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-[15px]"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-4 p-1.5 rounded-lg hover:bg-foreground/8 transition-colors"
-                title="清空"
+                title="Clear"
               >
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -129,7 +131,7 @@ export default function Index() {
                   (selectedTag === null ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary text-foreground")
                 }
               >
-                全部
+                All
               </button>
               {allTags.map((t) => (
                 <button

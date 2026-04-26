@@ -40,7 +40,7 @@ export async function login(username: string, password: string): Promise<Current
     });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new ApiError("登录请求超时，请检查网络后重试");
+      throw new ApiError("Sign-in request timed out. Check your network and try again.");
     }
     throw e;
   }
@@ -64,7 +64,7 @@ export async function register(input: {
     });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new ApiError("注册请求超时，请检查网络后重试");
+      throw new ApiError("Registration request timed out. Check your network and try again.");
     }
     throw e;
   }
@@ -133,6 +133,21 @@ export async function importGoogleKeep(files: { raw: string }[]): Promise<Import
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ files }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id: string }> {
+  const t = (file.type || "").trim().toLowerCase();
+  /** 空类型时误标成 png 会导致服务端误判；交给 Worker 用魔数识别 */
+  const headers: HeadersInit =
+    t.startsWith("image/") ? { "Content-Type": file.type.trim() } : { "Content-Type": "application/octet-stream" };
+  const res = await fetch(`${API_BASE}/notes/${noteId}/media`, {
+    ...fetchOpts,
+    method: "POST",
+    headers,
+    body: file,
   });
   await throwIfNotOk(res);
   return res.json();

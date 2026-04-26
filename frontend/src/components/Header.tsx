@@ -24,7 +24,7 @@ import { ApiError } from "@/lib/api-error";
 import { toast } from "sonner";
 
 const ARGON2_TOAST =
-  "此账号为旧版 Argon2 密码：请在本地 worker 目录执行 node scripts/d1-set-password-sha256.mjs 用户名 新密码，再执行打印出的 wrangler d1 execute，然后用新密码登录。";
+  "This account uses a legacy Argon2 password. In the worker folder run: node scripts/d1-set-password-sha256.mjs USERNAME NEW_PASSWORD, then run the printed wrangler d1 execute command, and sign in with the new password.";
 
 function toastAuthError(err: unknown, fallback: string) {
   if (err instanceof ApiError) {
@@ -64,9 +64,9 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       setLoginOpen(false);
       setLoginPass("");
-      toast.success("已登录");
+      toast.success("Signed in");
     },
-    onError: (err) => toastAuthError(err, "登录失败"),
+    onError: (err) => toastAuthError(err, "Sign-in failed"),
   });
 
   const registerMut = useMutation({
@@ -82,9 +82,9 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
       setLoginOpen(false);
       setLoginPass("");
       setRegEmail("");
-      toast.success("注册成功，已登录");
+      toast.success("Registered and signed in");
     },
-    onError: (err) => toastAuthError(err, "注册失败"),
+    onError: (err) => toastAuthError(err, "Registration failed"),
   });
 
   const logoutMut = useMutation({
@@ -92,13 +92,13 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      toast.success("已退出");
+      toast.success("Signed out");
     },
   });
 
   const me = meQuery.data;
-  const displayName = me?.username ?? "未登录";
-  const displayEmail = me?.email ?? "登录后可显示账号信息";
+  const displayName = me?.username ?? "Not signed in";
+  const displayEmail = me?.email ?? "Account details appear after sign-in";
   const initial = me?.username?.trim().charAt(0).toUpperCase() ?? "?";
 
   return (
@@ -142,16 +142,16 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                   }}
                 >
                   <User className="mr-2 h-4 w-4" />
-                  <span>登录</span>
+                  <span>Sign in</span>
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem className="cursor-pointer" disabled>
                 <User className="mr-2 h-4 w-4" />
-                <span>个人中心</span>
+                <span>Profile</span>
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer" disabled>
                 <Settings className="mr-2 h-4 w-4" />
-                <span>设置</span>
+                <span>Settings</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
@@ -164,12 +164,12 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                 {isImportingKeep ? (
                   <>
                     <span className="mr-2 h-4 w-4 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
-                    <span>导入中...</span>
+                    <span>Importing…</span>
                   </>
                 ) : (
                   <>
                     <Download className="mr-2 h-4 w-4" />
-                    <span>导入 Keep 笔记</span>
+                    <span>Import Google Keep</span>
                   </>
                 )}
               </DropdownMenuItem>
@@ -182,7 +182,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
-                <span>退出登录</span>
+                <span>Sign out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -202,7 +202,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{authTab === "login" ? "登录" : "注册"}</DialogTitle>
+            <DialogTitle>{authTab === "login" ? "Sign in" : "Register"}</DialogTitle>
           </DialogHeader>
           <div className="flex gap-2 border-b border-border pb-2">
             <Button
@@ -212,7 +212,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
               className="flex-1"
               onClick={() => setAuthTab("login")}
             >
-              登录
+              Sign in
             </Button>
             <Button
               type="button"
@@ -221,12 +221,12 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
               className="flex-1"
               onClick={() => setAuthTab("register")}
             >
-              注册
+              Register
             </Button>
           </div>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="login-username">用户名</Label>
+              <Label htmlFor="login-username">Username</Label>
               <Input
                 id="login-username"
                 autoComplete="username"
@@ -236,7 +236,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
             </div>
             {authTab === "register" && (
               <div className="grid gap-2">
-                <Label htmlFor="reg-email">邮箱</Label>
+                <Label htmlFor="reg-email">Email</Label>
                 <Input
                   id="reg-email"
                   type="email"
@@ -247,7 +247,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
               </div>
             )}
             <div className="grid gap-2">
-              <Label htmlFor="login-password">密码</Label>
+              <Label htmlFor="login-password">Password</Label>
               <Input
                 id="login-password"
                 type="password"
@@ -259,7 +259,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setLoginOpen(false)}>
-              取消
+              Cancel
             </Button>
             {authTab === "login" ? (
               <Button
@@ -267,7 +267,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                 disabled={loginMut.isPending || !loginUser.trim() || !loginPass}
                 onClick={() => loginMut.mutate()}
               >
-                {loginMut.isPending ? "登录中…" : "登录"}
+                {loginMut.isPending ? "Signing in…" : "Sign in"}
               </Button>
             ) : (
               <Button
@@ -280,7 +280,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
                 }
                 onClick={() => registerMut.mutate()}
               >
-                {registerMut.isPending ? "提交中…" : "注册"}
+                {registerMut.isPending ? "Submitting…" : "Register"}
               </Button>
             )}
           </DialogFooter>

@@ -9,7 +9,7 @@ export interface Env {
 }
 
 const ARGON2_MIGRATION_MSG =
-  "此账号仍为旧版 Argon2 密码，免费 Worker 无法在边缘完成校验。请在电脑终端进入 worker 目录执行：node scripts/d1-set-password-sha256.mjs 你的用户名 新密码，将打印的 wrangler d1 execute … --remote 命令执行一遍（需 wrangler login），然后用新密码登录。";
+  "This account still uses a legacy Argon2 password hash; the free Workers tier cannot verify it at the edge. In a terminal, cd into the worker folder and run: node scripts/d1-set-password-sha256.mjs YOUR_USERNAME NEW_PASSWORD, then run the printed wrangler d1 execute … --remote command (after wrangler login), and sign in with the new password.";
 
 const SESSION_COOKIE = "mynotes_session";
 
@@ -116,6 +116,112 @@ function r2BodyKey(userId: string, noteId: string): string {
   return `${userId}/${noteId}/body.json`;
 }
 
+function r2NotePrefix(userId: string, noteId: string): string {
+  return `${userId}/${noteId}/`;
+}
+
+function r2MediaKey(userId: string, noteId: string, mediaId: string): string {
+  return `${userId}/${noteId}/media/${mediaId}`;
+}
+
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/heic",
+  "image/heif",
+  "image/bmp",
+  "image/tiff",
+]);
+
+function normalizeImageContentType(header: string | null): string | null {
+  const raw = (header ?? "").split(";")[0].trim().toLowerCase();
+  if (!raw || raw === "application/octet-stream") return null;
+  const alias: Record<string, string> = {
+    "image/jpg": "image/jpeg",
+    "image/pjpeg": "image/jpeg",
+    "image/x-jpeg": "image/jpeg",
+    "image/x-png": "image/png",
+    "image/x-ms-bmp": "image/bmp",
+  };
+  return alias[raw] ?? raw;
+}
+
+/** 在 Content-Type 缺失或不可信时，用魔数判断常见图片 */
+function sniffImageMime(buf: ArrayBuffer): string | null {
+  const n = buf.byteLength;
+  if (n < 12) return null;
+  const u8 = new Uint8Array(buf);
+  if (u8[0] === 0xff && u8[1] === 0xd8 && u8[2] === 0xff) return "image/jpeg";
+  if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) return "image/png";
+  if (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x38) return "image/gif";
+  if (u8[0] === 0x42 && u8[1] === 0x4d) return "image/bmp";
+  if (
+    (u8[0] === 0x49 && u8[1] === 0x49 && u8[2] === 0x2a && u8[3] === 0x0) ||
+    (u8[0] === 0x4d && u8[1] === 0x4d && u8[2] === 0x0 && u8[3] === 0x2a)
+  ) {
+    return "image/tiff";
+  }
+  if (
+    u8[0] === 0x52 &&
+    u8[1] === 0x49 &&
+    u8[2] === 0x46 &&
+    u8[3] === 0x46 &&
+    n >= 12 &&
+    u8[8] === 0x57 &&
+    u8[9] === 0x45 &&
+    u8[10] === 0x42 &&
+    u8[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (n >= 12 && u8[4] === 0x66 && u8[5] === 0x74 && u8[6] === 0x79 && u8[7] === 0x70) {
+    const b = (i: number) => String.fromCharCode(u8[i]!);
+    const minor = `${b(8)}${b(9)}${b(10)}${b(11)}`.toLowerCase();
+    if (
+      minor === "heic" ||
+      minor === "heix" ||
+      minor === "hevc" ||
+      minor === "hevx" ||
+      minor === "mif1" ||
+      minor === "msf1" ||
+      minor === "heim"
+    ) {
+      return "image/heic";
+    }
+    if (minor === "avif" || minor === "avis") return "image/avif";
+  }
+  return null;
+}
+
+function resolveImageContentType(header: string | null, buf: ArrayBuffer): string | null {
+  /** 魔数优先：避免浏览器/代理把类型标错（例如 PNG 被标成 octet-stream） */
+  const sniffed = sniffImageMime(buf);
+  if (sniffed && ALLOWED_IMAGE_TYPES.has(sniffed)) return sniffed;
+  const normalized = normalizeImageContentType(header);
+  if (normalized && ALLOWED_IMAGE_TYPES.has(normalized)) return normalized;
+  return null;
+}
+
+function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
+async function deleteAllNoteObjects(bucket: R2Bucket, userId: number, noteId: string): Promise<void> {
+  const prefix = r2NotePrefix(String(userId), noteId);
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, cursor });
+    for (const o of listed.objects) {
+      await bucket.delete(o.key);
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+}
+
 async function readBodyContent(bucket: R2Bucket, key: string): Promise<string> {
   const obj = await bucket.get(key);
   if (!obj) return "";
@@ -150,7 +256,7 @@ export default {
       if (path === "/api" && request.method === "GET") {
         return json(env, request, {
           ok: true,
-          message: "API 根路径；前端请设置 VITE_API_BASE=https://api.zenotes.site/api",
+          message: "API root; set VITE_API_BASE=https://api.zenotes.site/api in the frontend",
           try: ["/api/health", "/api/notes"],
         });
       }
@@ -168,7 +274,7 @@ export default {
       if (path === "/api/auth/logout" && request.method === "POST") {
         const h = corsHeaders(env, request, { "Content-Type": "application/json" });
         h.append("Set-Cookie", clearSessionCookie(request));
-        return new Response(JSON.stringify({ message: "已退出登录" }), { headers: h });
+        return new Response(JSON.stringify({ message: "Signed out" }), { headers: h });
       }
       if (path === "/api/auth/me" && request.method === "GET") {
         return handleMe(request, env);
@@ -203,6 +309,31 @@ export default {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
         return importGoogleKeep(request, env, uid);
+      }
+
+      const mediaUploadMatch = path.match(/^\/api\/notes\/([^/]+)\/media$/);
+      if (mediaUploadMatch && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        return uploadNoteMedia(request, env, uid, mediaUploadMatch[1]);
+      }
+
+      const mediaItemMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/([^/]+)$/);
+      if (mediaItemMatch) {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        const noteId = mediaItemMatch[1];
+        const mediaId = mediaItemMatch[2];
+        if (request.method === "GET") {
+          return getNoteMedia(env, request, uid, noteId, mediaId);
+        }
+        if (request.method === "DELETE") {
+          return deleteNoteMedia(env, request, uid, noteId, mediaId);
+        }
       }
 
       const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)$/);
@@ -255,13 +386,13 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
   const password = body.password ?? "";
 
   if (username.length < 3) {
-    return json(env, request, { error: "用户名至少3个字符" }, { status: 400 });
+    return json(env, request, { error: "Username must be at least 3 characters" }, { status: 400 });
   }
   if (password.length < 6) {
-    return json(env, request, { error: "密码至少6个字符" }, { status: 400 });
+    return json(env, request, { error: "Password must be at least 6 characters" }, { status: 400 });
   }
   if (!email.includes("@")) {
-    return json(env, request, { error: "邮箱格式不正确" }, { status: 400 });
+    return json(env, request, { error: "Invalid email format" }, { status: 400 });
   }
 
   const existing = await env.DB.prepare(
@@ -328,7 +459,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     try {
       ok = await argon2Verify({ password: plain, hash: ph });
     } catch (e) {
-      console.error("argon2Verify failed (常见原因：免费 Worker CPU 不足以完成 Argon2id 校验)", e);
+      console.error("argon2Verify failed (often: free Worker CPU too limited for Argon2id)", e);
       return json(
         env,
         request,
@@ -401,10 +532,6 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
   const content = (body.content ?? "").trim();
   const color = body.color ?? "white";
   const tagsJson = JSON.stringify(body.tags ?? []);
-
-  if (!title && content.length === 0) {
-    return json(env, request, { error: "content_or_title_required" }, { status: 400 });
-  }
 
   const maxRow = await env.DB.prepare(
     "SELECT COALESCE(MAX(position), 0) as m FROM notes WHERE user_id = ? AND pinned = 0",
@@ -524,8 +651,104 @@ async function deleteNote(env: Env, request: Request, userId: number, id: string
   }
 
   await env.DB.prepare("DELETE FROM notes WHERE id = ? AND user_id = ?").bind(id, userId).run();
-  await env.NOTES.delete(row.r2_key);
+  await deleteAllNoteObjects(env.NOTES, userId, id);
 
+  return new Response(null, { status: 204, headers: corsHeaders(env, request) });
+}
+
+async function assertNoteOwned(
+  env: Env,
+  userId: number,
+  noteId: string,
+): Promise<NoteRow | null> {
+  return env.DB.prepare("SELECT * FROM notes WHERE id = ? AND user_id = ?")
+    .bind(noteId, userId)
+    .first<NoteRow>();
+}
+
+async function uploadNoteMedia(
+  request: Request,
+  env: Env,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength === 0) {
+    return json(env, request, { error: "empty_body" }, { status: 400 });
+  }
+  if (buf.byteLength > MAX_IMAGE_BYTES) {
+    return json(env, request, { error: "image_too_large", maxBytes: MAX_IMAGE_BYTES }, { status: 413 });
+  }
+
+  const contentType = resolveImageContentType(request.headers.get("Content-Type"), buf);
+  if (!contentType) {
+    return json(env, request, {
+      error: "invalid_image_type",
+      message:
+        "Unrecognized image format (supported: JPEG, PNG, GIF, WebP, AVIF, HEIC, BMP, TIFF, and more)",
+    }, { status: 400 });
+  }
+
+  const mediaId = crypto.randomUUID();
+  const key = r2MediaKey(String(userId), noteId, mediaId);
+  await env.NOTES.put(key, buf, {
+    httpMetadata: { contentType },
+  });
+
+  return json(env, request, { id: mediaId, contentType }, { status: 201 });
+}
+
+async function getNoteMedia(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+  mediaId: string,
+): Promise<Response> {
+  if (!isUuid(mediaId)) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  const owned = await assertNoteOwned(env, userId, noteId);
+  if (!owned) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const key = r2MediaKey(String(userId), noteId, mediaId);
+  const obj = await env.NOTES.get(key);
+  if (!obj) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const ct = obj.httpMetadata?.contentType || "application/octet-stream";
+  const h = corsHeaders(env, request, {
+    "Content-Type": ct,
+    "Cache-Control": "private, max-age=3600",
+  });
+  return new Response(obj.body, { headers: h });
+}
+
+async function deleteNoteMedia(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+  mediaId: string,
+): Promise<Response> {
+  if (!isUuid(mediaId)) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  const owned = await assertNoteOwned(env, userId, noteId);
+  if (!owned) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const key = r2MediaKey(String(userId), noteId, mediaId);
+  await env.NOTES.delete(key);
   return new Response(null, { status: 204, headers: corsHeaders(env, request) });
 }
 
@@ -616,7 +839,7 @@ async function importGoogleKeep(request: Request, env: Env, userId: number): Pro
     return json(
       env,
       request,
-      { error: "no_files", message: "请选择 Google Takeout 解压后的 JSON 文件（可多选）" },
+      { error: "no_files", message: "Choose JSON files from an extracted Google Takeout (multiple allowed)" },
       { status: 400 },
     );
   }

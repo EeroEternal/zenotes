@@ -1,0 +1,10 @@
+{
+  "name": "mynotes",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n worker,web -c cyan,magenta \"npm run dev --prefix worker\" \"npm run dev --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

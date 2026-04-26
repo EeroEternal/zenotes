@@ -8,13 +8,13 @@ export class ApiError extends Error {
 }
 
 function fallbackMessage(status: number): string {
-  if (status === 400) return "请求参数不正确";
-  if (status === 401) return "未登录或密码错误";
-  if (status === 403) return "没有权限";
-  if (status === 404) return "资源不存在";
-  if (status === 409) return "与已有数据冲突";
-  if (status >= 500) return "服务暂时不可用，请稍后重试";
-  return `请求失败（${status}）`;
+  if (status === 400) return "Invalid request";
+  if (status === 401) return "Not signed in or wrong password";
+  if (status === 403) return "Forbidden";
+  if (status === 404) return "Not found";
+  if (status === 409) return "Conflict with existing data";
+  if (status >= 500) return "Service unavailable. Try again later.";
+  return `Request failed (${status})`;
 }
 
 /**
@@ -36,10 +36,10 @@ export async function messageFromResponse(res: Response): Promise<string> {
       s = j.message.trim();
     } else if (typeof j.error === "string" && j.error.trim()) {
       s = j.error.trim();
-      if (s === "Invalid credentials") s = "用户名或密码错误";
+      if (s === "Invalid credentials") s = "Invalid username or password";
       if (s === "argon2_unavailable") {
         s =
-          "免费 Worker 无法完成旧版 Argon2 密码校验。请在本地进入 worker 目录执行：node scripts/d1-set-password-sha256.mjs 你的用户名 新密码，按输出执行 wrangler d1 execute（需已 wrangler login），再用新密码登录。";
+          "This account uses a legacy Argon2 password; the free Workers tier cannot verify it. In the worker folder run: node scripts/d1-set-password-sha256.mjs YOUR_USERNAME NEW_PASSWORD, then run the printed wrangler d1 execute (after wrangler login), and sign in with the new password.";
       }
     }
     if (s.length === 0) return fallbackMessage(res.status);

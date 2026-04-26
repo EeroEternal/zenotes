@@ -113,7 +113,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             p-2 rounded-lg hover:bg-foreground/8 transition-all duration-200
             ${note.pinned ? 'text-primary' : 'text-muted-foreground'}
           `}
-          title={note.pinned ? '取消固定' : '固定'}
+          title={note.pinned ? 'Unpin' : 'Pin'}
         >
           <Pin className={`w-4 h-4 ${note.pinned ? 'fill-current' : ''}`} />
         </button>
@@ -122,7 +122,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             e.stopPropagation();
           }}
           className="p-2 rounded-lg text-muted-foreground hover:bg-foreground/8 transition-all duration-200"
-          title="更改颜色"
+          title="Change color"
         >
           <Palette className="w-4 h-4" />
         </button>
@@ -132,7 +132,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             onDelete?.();
           }}
           className="p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 ml-auto"
-          title="删除"
+          title="Delete"
         >
           <Trash2 className="w-4 h-4" />
         </button>

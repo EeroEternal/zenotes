@@ -158,4 +158,44 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  [data-note-dialog-editor] .tiptap p.is-empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground) / 0.65);
+    pointer-events: none;
+    float: left;
+    height: 0;
+  }
+
+  /*
+   * TipTap 列表：Tailwind preflight 会把 ul/ol 的 list-style 清掉，
+   * 仅靠外层 prose 有时盖不住，这里对编辑器内列表强制恢复项目符号与缩进。
+   */
+  [data-note-dialog-editor] .tiptap ul {
+    list-style-type: disc;
+    list-style-position: outside;
+    padding-left: 1.35rem;
+    margin: 0.35rem 0;
+  }
+
+  [data-note-dialog-editor] .tiptap ol {
+    list-style-type: decimal;
+    list-style-position: outside;
+    padding-left: 1.35rem;
+    margin: 0.35rem 0;
+  }
+
+  [data-note-dialog-editor] .tiptap li {
+    margin: 0.15rem 0;
+    display: list-item;
+  }
+
+  [data-note-dialog-editor] .tiptap li > p {
+    margin: 0;
+  }
+
+  [data-note-dialog-editor] .tiptap ul ul {
+    list-style-type: circle;
+    margin: 0.15rem 0;
+  }
 }

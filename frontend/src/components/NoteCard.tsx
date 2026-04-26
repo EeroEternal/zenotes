@@ -1,5 +1,6 @@
 import { Note, NoteColor } from '@/types/note';
 import { Pin, MoreVertical } from 'lucide-react';
+import { NOTE_MEDIA_PREFIX, parseNoteContentToNodes } from '@/lib/note-media';
 import { Badge } from "@/components/ui/badge";
 
 interface NoteCardProps {
@@ -19,7 +20,9 @@ const colorClasses: Record<NoteColor, string> = {
 };
 
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
+  const hasMedia = note.content.includes(NOTE_MEDIA_PREFIX);
   const isLongContent = note.content.length > 150;
+  const longClamped = isLongContent && !hasMedia;
 
   return (
     <div
@@ -46,12 +49,15 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             {note.title}
           </h3>
         )}
-        <p className={`
-          text-sm text-foreground/75 whitespace-pre-wrap leading-relaxed
-          ${isLongContent ? 'line-clamp-6' : ''}
-        `}>
-          {note.content}
-        </p>
+        <div
+          className={`
+          text-sm text-foreground/75 leading-relaxed
+          ${hasMedia ? "max-h-[min(70vh,28rem)] overflow-y-auto" : ""}
+          ${longClamped ? "line-clamp-6" : ""}
+        `}
+        >
+          {parseNoteContentToNodes(note.content, note.id, "card")}
+        </div>
 
         {note.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -86,7 +92,7 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             p-2 rounded-lg hover:bg-foreground/8 transition-all duration-200
             ${note.pinned ? 'text-primary' : 'text-muted-foreground'}
           `}
-          title={note.pinned ? '取消固定' : '固定'}
+          title={note.pinned ? 'Unpin' : 'Pin'}
         >
           <Pin className={`w-4 h-4 ${note.pinned ? 'fill-current' : ''}`} />
         </button>

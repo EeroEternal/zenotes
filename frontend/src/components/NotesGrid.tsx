@@ -108,7 +108,7 @@ export function NotesGrid({
           {(pinnedNotes.length > 0 || (activeNote && unpinnedNotes.length > 0)) && (
             <div className="mb-8">
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
-                已固定
+                Pinned
               </h2>
               {pinnedNotes.length > 0 ? (
                 <SortableContext items={pinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
@@ -127,7 +127,7 @@ export function NotesGrid({
                 </SortableContext>
               ) : (
                 <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
-                  拖到这里以固定
+                  Drop here to pin
                 </div>
               )}
             </div>
@@ -140,7 +140,7 @@ export function NotesGrid({
             <div>
               {pinnedNotes.length > 0 && (
                 <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-1">
-                  其他笔记
+                  Other notes
                 </h2>
               )}
               {unpinnedNotes.length > 0 ? (
@@ -159,7 +159,7 @@ export function NotesGrid({
                 </SortableContext>
               ) : (
                 <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
-                  拖到这里以取消固定
+                  Drop here to unpin
                 </div>
               )}
             </div>
@@ -181,8 +181,8 @@ export function NotesGrid({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </div>
-          <p className="text-lg font-medium mb-1">没有笔记</p>
-          <p className="text-sm">点击上方添加你的第一条笔记</p>
+          <p className="text-lg font-medium mb-1">No notes yet</p>
+          <p className="text-sm">Add your first note above</p>
         </div>
       )}
     </div>
