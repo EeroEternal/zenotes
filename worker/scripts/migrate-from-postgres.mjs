@@ -5,7 +5,7 @@
  * 用法：
  *   DATABASE_URL=postgres://... \
  *   R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
- *   R2_BUCKET=mynotes-bodies \
+ *   R2_BUCKET=zenotes-bodies \
  *   node scripts/migrate-from-postgres.mjs
  *
  * 仅生成 SQL 不上传 R2：
@@ -72,7 +72,7 @@ async function main() {
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       },
     });
-  const bucket = process.env.R2_BUCKET || "mynotes-bodies";
+  const bucket = process.env.R2_BUCKET || "zenotes-bodies";
 
   if (!dryRun && (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY)) {
     console.error("未设置 R2 凭证时请加 DRY_RUN=1 只生成 SQL，或设置 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY");
@@ -114,7 +114,7 @@ async function main() {
     console.log("DRY_RUN：正文示例已写入 out/migration/*.body.json，请配置 R2 后去掉 DRY_RUN 再运行上传。");
   } else {
     console.log("R2 上传完成。将 d1-import.sql 应用到 D1：");
-    console.log(`  wrangler d1 execute mynotes-db --remote --file=${sqlPath}`);
+    console.log(`  wrangler d1 execute zenotes-db --remote --file=${sqlPath}`);
   }
 }
 

@@ -4,7 +4,7 @@
 #   CLOUDFLARE_API_TOKEN   需含「编辑 Cloudflare Workers」中的 Pages 写权限
 #   VITE_API_BASE          例如 https://api.zenotes.site/api
 # 可选：
-#   PAGES_PROJECT_NAME     默认 mynotes-web
+#   PAGES_PROJECT_NAME     默认 zenotes-web
 
 name: Deploy Cloudflare Pages
 
@@ -52,5 +52,5 @@ jobs:
             echo "::error::请在仓库 Secrets 中设置 CLOUDFLARE_API_TOKEN"
             exit 1
           fi
-          PROJECT="${PAGES_PROJECT_NAME:-mynotes-web}"
+          PROJECT="${PAGES_PROJECT_NAME:-zenotes-web}"
           npx wrangler@4 pages deploy dist --project-name="$PROJECT"

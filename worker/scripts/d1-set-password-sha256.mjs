@@ -21,5 +21,5 @@ const u = username.replace(/'/g, "''");
 
 console.log("-- 以下与 Worker 内 sha256Hex 一致（小写 hex）\n");
 console.log(
-  `npx wrangler d1 execute mynotes-db --remote --command="UPDATE users SET password_hash = '${hex}' WHERE username = '${u}';"`,
+  `npx wrangler d1 execute zenotes-db --remote --command="UPDATE users SET password_hash = '${hex}' WHERE username = '${u}';"`,
 );

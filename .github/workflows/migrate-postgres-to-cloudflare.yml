@@ -12,10 +12,10 @@
 # - R2_SECRET_ACCESS_KEY     R2 API 令牌 Secret
 # - CLOUDFLARE_API_TOKEN     需含 D1 写权限（用于 wrangler d1 execute）
 # 可选：
-# - R2_BUCKET                 默认 mynotes-bodies
+# - R2_BUCKET                 默认 zenotes-bodies
 # - CLOUDFLARE_ACCOUNT_ID     多账户时可显式指定（多数情况不必）
 # - TARGET_USER_ID            默认 1
-# - D1_DATABASE_NAME          默认 mynotes-db
+# - D1_DATABASE_NAME          默认 zenotes-db
 
 name: Migrate Postgres to Cloudflare (D1 + R2)
 
@@ -57,7 +57,7 @@ jobs:
           if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ]; then
             echo "Missing R2 secrets (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)"; exit 1;
           fi
-          export R2_BUCKET="${R2_BUCKET:-mynotes-bodies}"
+          export R2_BUCKET="${R2_BUCKET:-zenotes-bodies}"
           export TARGET_USER_ID="${TARGET_USER_ID:-1}"
           node scripts/migrate-from-postgres.mjs
 
@@ -69,5 +69,5 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "Missing secret CLOUDFLARE_API_TOKEN"; exit 1; fi
-          DBNAME="${D1_DATABASE_NAME:-mynotes-db}"
+          DBNAME="${D1_DATABASE_NAME:-zenotes-db}"
           npx wrangler d1 execute "$DBNAME" --remote --file=out/migration/d1-import.sql

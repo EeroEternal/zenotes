@@ -2,7 +2,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 
-/** 与存储格式 `![alt](mynotes:media:uuid)` 对应的图片节点，带 `mediaId` 以便导出 Markdown */
+/** 与存储格式 `![alt](zenotes:media:uuid)` 对应的图片节点，带 `mediaId` 以便导出 Markdown */
 export const NoteMediaImage = Image.extend({
   addAttributes() {
     return {

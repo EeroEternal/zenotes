@@ -5,14 +5,17 @@ import remarkGfm from "remark-gfm";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
-/** 正文里插入的图片占位（与 Worker 约定一致） */
-export const NOTE_MEDIA_PREFIX = "mynotes:media:";
+/** 正文里插入的图片占位（与 Worker 约定一致）；旧数据可能仍为 `mynotes:media:`，解析时二者皆支持 */
+export const NOTE_MEDIA_PREFIX = "zenotes:media:";
+
+const NOTE_MEDIA_IN_BODY =
+  /!\[([^\]]*)\]\((?:mynotes|zenotes):media:([0-9a-f-]{36})\)/gi;
 
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; alt: string; mediaId: string };
 
-const MEDIA_LINE_RE = /!\[([^\]]*)\]\(mynotes:media:([0-9a-f-]{36})\)/gi;
+const MEDIA_LINE_RE = NOTE_MEDIA_IN_BODY;
 
 /**
  * 保证：首块不是孤立的图、末块不是孤立的图、相邻图片之间有可编辑文字。
@@ -107,15 +110,18 @@ function NoteTextChunkMarkdown({
             </a>
           ),
           img: ({ src, alt }) => {
-            if (typeof src === "string" && src.startsWith(NOTE_MEDIA_PREFIX)) {
-              const mediaId = src.slice(NOTE_MEDIA_PREFIX.length);
-              return (
-                <NoteEmbeddedImage
-                  src={noteMediaUrl(noteId, mediaId)}
-                  alt={typeof alt === "string" ? alt : "image"}
-                  variant={layout}
-                />
-              );
+            if (typeof src === "string") {
+              const m = /^(?:mynotes|zenotes):media:([0-9a-f-]{36})$/i.exec(src);
+              if (m) {
+                const mediaId = m[1]!;
+                return (
+                  <NoteEmbeddedImage
+                    src={noteMediaUrl(noteId, mediaId)}
+                    alt={typeof alt === "string" ? alt : "image"}
+                    variant={layout}
+                  />
+                );
+              }
             }
             if (src)
               return <img src={src} alt={alt} className="max-w-full rounded-lg" loading="lazy" />;
@@ -133,7 +139,7 @@ export function noteMediaUrl(noteId: string, mediaId: string): string {
   return `${API_BASE}/notes/${noteId}/media/${mediaId}`;
 }
 
-const MEDIA_TOKEN_RE = /!\[([^\]]*)\]\(mynotes:media:([0-9a-f-]{36})\)/gi;
+const MEDIA_TOKEN_RE = NOTE_MEDIA_IN_BODY;
 
 /** 列表卡片 / 编辑弹窗 内嵌图展示（实际尺寸由 NoteEmbeddedImage 控制） */
 export type NoteMediaLayout = "card" | "dialog";

@@ -11,7 +11,7 @@ export interface Env {
 const ARGON2_MIGRATION_MSG =
   "This account still uses a legacy Argon2 password hash; the free Workers tier cannot verify it at the edge. In a terminal, cd into the worker folder and run: node scripts/d1-set-password-sha256.mjs YOUR_USERNAME NEW_PASSWORD, then run the printed wrangler d1 execute … --remote command (after wrangler login), and sign in with the new password.";
 
-const SESSION_COOKIE = "mynotes_session";
+const SESSION_COOKIE = "zenotes_session";
 
 function corsOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("Origin");
@@ -247,7 +247,7 @@ export default {
       if (path === "/" && request.method === "GET") {
         return json(env, request, {
           ok: true,
-          service: "mynotes-api",
+          service: "zenotes-api",
           health: "/api/health",
           notes: "/api/notes",
         });

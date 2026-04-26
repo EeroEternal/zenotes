@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::models::*;
 
-const SESSION_COOKIE_NAME: &str = "mynotes_session";
+const SESSION_COOKIE_NAME: &str = "zenotes_session";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

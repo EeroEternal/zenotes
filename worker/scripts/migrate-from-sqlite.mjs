@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * 从 SQLite（mynotes.db）迁出 users / notes，正文写入 R2，并生成 D1 SQL。
+ * 从 SQLite（如 mynotes.db / zenotes.db）迁出 users / notes，正文写入 R2，并生成 D1 SQL。
  *
  * R2 上传默认走 wrangler（需已 wrangler login），无需 R2 S3 API 密钥：
- *   SQLITE_PATH=out/mynotes-source.db node scripts/migrate-from-sqlite.mjs
+ *   SQLITE_PATH=out/zenotes-source.db node scripts/migrate-from-sqlite.mjs
  *
  * 仅预览（不落 R2、不写远程）：
  *   DRY_RUN=1 SQLITE_PATH=... node scripts/migrate-from-sqlite.mjs
@@ -44,7 +44,7 @@ function putR2ViaWrangler(key, bodyStr, dryRun) {
   } else {
     execFileSync(
       "npx",
-      ["wrangler", "r2", "object", "put", `mynotes-bodies/${key}`, "--remote", "-f", tmp, "-y"],
+      ["wrangler", "r2", "object", "put", `zenotes-bodies/${key}`, "--remote", "-f", tmp, "-y"],
       { cwd: WORKER_ROOT, stdio: "inherit" },
     );
   }
@@ -52,10 +52,10 @@ function putR2ViaWrangler(key, bodyStr, dryRun) {
 }
 
 async function main() {
-  const sqlitePath = process.env.SQLITE_PATH || join(WORKER_ROOT, "out", "mynotes-source.db");
+  const sqlitePath = process.env.SQLITE_PATH || join(WORKER_ROOT, "out", "zenotes-source.db");
   const dryRun = process.env.DRY_RUN === "1";
   const applyD1 = process.env.APPLY_D1 === "1";
-  const d1Name = process.env.D1_DATABASE_NAME || "mynotes-db";
+  const d1Name = process.env.D1_DATABASE_NAME || "zenotes-db";
 
   mkdirSync(OUT, { recursive: true });
 

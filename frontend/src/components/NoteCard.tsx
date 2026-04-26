@@ -1,6 +1,6 @@
 import { Note, NoteColor } from '@/types/note';
 import { Pin, MoreVertical } from 'lucide-react';
-import { NOTE_MEDIA_PREFIX, parseNoteContentToNodes } from '@/lib/note-media';
+import { parseNoteContentToNodes } from '@/lib/note-media';
 import { Badge } from "@/components/ui/badge";
 
 interface NoteCardProps {
@@ -20,7 +20,7 @@ const colorClasses: Record<NoteColor, string> = {
 };
 
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
-  const hasMedia = note.content.includes(NOTE_MEDIA_PREFIX);
+  const hasMedia = /(?:mynotes|zenotes):media:/i.test(note.content);
   const isLongContent = note.content.length > 150;
   const longClamped = isLongContent && !hasMedia;
 

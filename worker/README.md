@@ -1,4 +1,4 @@
-# MyNotes Cloudflare Worker（D1 + R2）
+# Zenotes Cloudflare Worker（D1 + R2）
 
 API 与 `backend`（Actix + PostgreSQL）路由兼容：`/api/notes`、`/api/auth/*` 等。正文存 R2（`{userId}/{noteId}/body.json`），元数据在 D1。
 
@@ -8,8 +8,8 @@ API 与 `backend`（Actix + PostgreSQL）路由兼容：`/api/notes`、`/api/aut
 cd worker
 npm install
 wrangler login
-wrangler d1 create mynotes-db
-wrangler r2 bucket create mynotes-bodies
+wrangler d1 create zenotes-db
+wrangler r2 bucket create zenotes-bodies
 ```
 
 把 `wrangler.jsonc` 里的 `REPLACE_WITH_D1_DATABASE_ID` 换成 `wrangler d1 list` 里显示的 id。
@@ -37,15 +37,15 @@ npm run deploy
 
 `VITE_API_BASE=https://api.zenotes.site/api`
 
-## 从 SQLite（服务器 mynotes.db）迁移
+## 从 SQLite（如服务器上的旧 `mynotes.db`）迁移
 
-将 `mynotes.db` 放到 `worker/out/mynotes-source.db`（或在服务器 `scp` 下来），然后：
+将 SQLite 文件放到 `worker/out/zenotes-source.db`（或沿用 `mynotes-source.db` 并设置 `SQLITE_PATH`），然后：
 
 ```bash
 cd worker
-# 默认 SQLITE_PATH=out/mynotes-source.db；R2 用 wrangler，不需 R2 API 密钥
+# 默认 SQLITE_PATH=out/zenotes-source.db；R2 用 wrangler，不需 R2 API 密钥
 node scripts/migrate-from-sqlite.mjs
-npx wrangler d1 execute mynotes-db --remote --file=out/migration/d1-import-from-sqlite.sql
+npx wrangler d1 execute zenotes-db --remote --file=out/migration/d1-import-from-sqlite.sql
 ```
 
 预览：`DRY_RUN=1`。迁完顺手打 D1：`APPLY_D1=1`（慎用）。
@@ -59,9 +59,9 @@ export DATABASE_URL=postgres://...
 export R2_ACCOUNT_ID=...
 export R2_ACCESS_KEY_ID=...
 export R2_SECRET_ACCESS_KEY=...
-export R2_BUCKET=mynotes-bodies
+export R2_BUCKET=zenotes-bodies
 node scripts/migrate-from-postgres.mjs
-wrangler d1 execute mynotes-db --remote --file=out/migration/d1-import.sql
+wrangler d1 execute zenotes-db --remote --file=out/migration/d1-import.sql
 ```
 
 只生成 SQL、不落 R2：`DRY_RUN=1` 运行脚本。`TARGET_USER_ID` 默认 `1`，与 D1 中默认用户一致。
@@ -80,7 +80,7 @@ wrangler d1 execute mynotes-db --remote --file=out/migration/d1-import.sql
 
 1. **（推荐）** 在本机执行：  
    `node scripts/d1-set-password-sha256.mjs 你的用户名 你的新密码`  
-   按输出运行 **`wrangler d1 execute mynotes-db --remote --command="..."`**，将库中密码改为与 Worker 一致的 **SHA256**；之后用新密码登录。  
+   按输出运行 **`wrangler d1 execute zenotes-db --remote --command="..."`**，将库中密码改为与 Worker 一致的 **SHA256**；之后用新密码登录。  
 2. 仅在确有高 CPU、且需用**原明文密码**尝试校验 Argon2 时：在 `wrangler.jsonc` 的 `vars` 中设置 **`ALLOW_ARGON2_VERIFY": "true"`** 并重新部署（仍可能因参数过重在边缘失败）。
 
 ## Google Keep 导入

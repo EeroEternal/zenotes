@@ -1,4 +1,4 @@
-# MyNotes
+# Zenotes
 
 一个简洁的笔记应用，支持创建、编辑、删除、置顶、拖拽排序和标签筛选。
 
@@ -10,7 +10,7 @@
 ## 项目结构
 
 ```
-mynotes/
+zenotes/
 ├── frontend/    # React 前端（可部署到 Cloudflare Pages）
 ├── backend/     # Rust 后端 + PostgreSQL（本地/VPS）
 ├── worker/      # Cloudflare Worker + D1 + R2（见 worker/README.md）
@@ -29,7 +29,7 @@ mynotes/
 
 ```sh
 # 创建数据库
-createdb mynotes
+createdb zenotes
 
 # 配置后端环境变量
 cp backend/.env.example backend/.env
@@ -55,7 +55,7 @@ npm run dev
 
 ## GitHub Actions（Cloudflare Pages）
 
-推送到 `main` 时由 **`.github/workflows/deploy-pages.yml`** 构建 `frontend` 并部署到 Cloudflare Pages。请在仓库 **Settings → Secrets → Actions** 配置 **`CLOUDFLARE_API_TOKEN`**、**`VITE_API_BASE`**（例如 `https://api.zenotes.site/api`）；可选 **`PAGES_PROJECT_NAME`**（默认 `mynotes-web`）。
+推送到 `main` 时由 **`.github/workflows/deploy-pages.yml`** 构建 `frontend` 并部署到 Cloudflare Pages。请在仓库 **Settings → Secrets → Actions** 配置 **`CLOUDFLARE_API_TOKEN`**、**`VITE_API_BASE`**（例如 `https://api.zenotes.site/api`）；可选 **`PAGES_PROJECT_NAME`**（默认 `zenotes-web`）。
 
 ## API 接口
 

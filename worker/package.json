@@ -1,12 +1,12 @@
 {
-  "name": "mynotes-worker",
+  "name": "zenotes-worker",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler d1 migrations apply mynotes-db --local && wrangler dev",
+    "dev": "wrangler d1 migrations apply zenotes-db --local && wrangler dev",
     "deploy": "wrangler deploy",
-    "migrate:d1": "wrangler d1 migrations apply mynotes-db --remote",
-    "migrate:d1:local": "wrangler d1 migrations apply mynotes-db --local",
+    "migrate:d1": "wrangler d1 migrations apply zenotes-db --remote",
+    "migrate:d1:local": "wrangler d1 migrations apply zenotes-db --local",
     "migrate:pg": "node scripts/migrate-from-postgres.mjs",
     "migrate:sqlite": "node scripts/migrate-from-sqlite.mjs",
     "d1:password": "node scripts/d1-set-password-sha256.mjs"

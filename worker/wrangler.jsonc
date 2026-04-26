@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mynotes-api",
+  "name": "zenotes-api",
   "main": "src/index.ts",
   "compatibility_date": "2025-01-01",
   "vars": {
@@ -9,14 +9,14 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mynotes-db",
+      "database_name": "zenotes-db",
       "database_id": "709d0521-8eae-44e6-b4d6-2dc95396390a"
     }
   ],
   "r2_buckets": [
     {
       "binding": "NOTES",
-      "bucket_name": "mynotes-bodies"
+      "bucket_name": "zenotes-bodies"
     }
   ]
 }

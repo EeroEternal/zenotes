@@ -1,5 +1,5 @@
 {
-  "name": "mynotes",
+  "name": "zenotes",
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n worker,web -c cyan,magenta \"npm run dev --prefix worker\" \"npm run dev --prefix frontend\""
