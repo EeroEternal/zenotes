@@ -152,6 +152,7 @@ export function NotesGrid({
                         note={note}
                         onClick={() => onNoteClick(note)}
                         onTogglePin={() => onTogglePin(note.id)}
+                        onDelete={() => onDelete(note.id)}
                         onTagClick={onTagClick}
                       />
                     ))}

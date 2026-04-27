@@ -20,9 +20,10 @@ const colorClasses: Record<NoteColor, string> = {
 };
 
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
-  const hasMedia = /(?:mynotes|zenotes):media:/i.test(note.content);
-  const isLongContent = note.content.length > 150;
-  const longClamped = isLongContent && !hasMedia;
+  const raw = String(note.content ?? "");
+  const hasMedia = /(?:mynotes|zenotes):media:/i.test(raw);
+  const isLongContent = raw.length > 150;
+  const longTextOnlyPreview = isLongContent && !hasMedia;
 
   return (
     <div
@@ -49,15 +50,19 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             {note.title}
           </h3>
         )}
+        {raw.trim() ? (
         <div
           className={`
-          text-sm text-foreground/75 leading-relaxed
+          text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words
           ${hasMedia ? "max-h-[min(70vh,28rem)] overflow-y-auto" : ""}
-          ${longClamped ? "line-clamp-6" : ""}
+          ${longTextOnlyPreview ? "max-h-[6.75rem] overflow-hidden" : ""}
         `}
         >
-          {parseNoteContentToNodes(note.content, note.id, "card")}
+          {parseNoteContentToNodes(raw, note.id, "card")}
         </div>
+        ) : (
+          <p className="text-xs text-muted-foreground/50">无正文</p>
+        )}
 
         {note.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">

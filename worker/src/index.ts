@@ -210,6 +210,15 @@ function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
+/** URL 路径里的一段，可能是 percent-encoding；与 D1 里存的一致才能命中 */
+function pathIdSegment(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 async function deleteAllNoteObjects(bucket: R2Bucket, userId: number, noteId: string): Promise<void> {
   const prefix = r2NotePrefix(String(userId), noteId);
   let cursor: string | undefined;
@@ -232,6 +241,57 @@ async function readBodyContent(bucket: R2Bucket, key: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/** 与前端 `NOTE_MEDIA_PREFIX` 一致 */
+const NOTE_MARKDOWN_MEDIA_PREFIX = "zenotes:media:";
+
+/**
+ * 根据 R2 中 `userId/noteId/media/*` 已有对象重写笔记正文，不重新上传文件。
+ */
+async function rebuildNoteFromR2Media(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  const prefix = `${userId}/${noteId}/media/`;
+  const mediaIds: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await env.NOTES.list({ prefix, cursor });
+    for (const o of listed.objects) {
+      const name = o.key.split("/").pop() ?? "";
+      if (isUuid(name)) {
+        mediaIds.push(name);
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  mediaIds.sort();
+  if (mediaIds.length === 0) {
+    return json(
+      env,
+      request,
+      { error: "no_media_objects", message: "该前缀下没有媒体: " + prefix },
+      { status: 400 },
+    );
+  }
+  const header = "以下由 R2 中已有媒体重新生成，未再次上传。";
+  const bodyMd = [header, "", ...mediaIds.map((id) => `![image](${NOTE_MARKDOWN_MEDIA_PREFIX}${id})`)].join(
+    "\n\n",
+  );
+  await env.NOTES.put(row.r2_key, JSON.stringify({ content: bodyMd }), {
+    httpMetadata: { contentType: "application/json" },
+  });
+  await env.DB.prepare("UPDATE notes SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+    .bind(noteId, userId)
+    .run();
+  return json(env, request, { ok: true, noteId, imageCount: mediaIds.length });
 }
 
 export default {
@@ -311,23 +371,32 @@ export default {
         return importGoogleKeep(request, env, uid);
       }
 
-      const mediaUploadMatch = path.match(/^\/api\/notes\/([^/]+)\/media$/);
+      const rebuildMatch = path.match(/^\/api\/notes\/([^/]+)\/rebuild-from-r2-media\/?$/);
+      if (rebuildMatch && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        return rebuildNoteFromR2Media(env, request, uid, pathIdSegment(rebuildMatch[1]!));
+      }
+
+      const mediaUploadMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/?$/);
       if (mediaUploadMatch && request.method === "POST") {
         const uid = sessionUserId(request);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
-        return uploadNoteMedia(request, env, uid, mediaUploadMatch[1]);
+        return uploadNoteMedia(request, env, uid, pathIdSegment(mediaUploadMatch[1]));
       }
 
-      const mediaItemMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/([^/]+)$/);
+      const mediaItemMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/([^/]+)\/?$/);
       if (mediaItemMatch) {
         const uid = sessionUserId(request);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
-        const noteId = mediaItemMatch[1];
-        const mediaId = mediaItemMatch[2];
+        const noteId = pathIdSegment(mediaItemMatch[1]!);
+        const mediaId = pathIdSegment(mediaItemMatch[2]!);
         if (request.method === "GET") {
           return getNoteMedia(env, request, uid, noteId, mediaId);
         }
@@ -336,13 +405,16 @@ export default {
         }
       }
 
-      const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)$/);
+      const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)\/?$/);
       if (noteIdMatch) {
         const uid = sessionUserId(request);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
-        const id = noteIdMatch[1];
+        const id = pathIdSegment(noteIdMatch[1]!);
+        if (request.method === "GET") {
+          return getNote(env, request, uid, id);
+        }
         if (request.method === "PATCH") {
           return updateNote(request, env, uid, id);
         }
@@ -639,6 +711,15 @@ async function updateNote(
   }
 
   return json(env, request, noteResponse(updated, finalContent));
+}
+
+async function getNote(env: Env, request: Request, userId: number, id: string): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, id);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  const content = await readBodyContent(env.NOTES, row.r2_key);
+  return json(env, request, noteResponse(row, content));
 }
 
 async function deleteNote(env: Env, request: Request, userId: number, id: string): Promise<Response> {

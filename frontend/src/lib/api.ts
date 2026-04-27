@@ -84,6 +84,12 @@ export async function fetchNotes(): Promise<Note[]> {
   return res.json();
 }
 
+export async function fetchNote(id: string): Promise<Note> {
+  const res = await fetch(`${API_BASE}/notes/${encodeURIComponent(id)}`, fetchOpts);
+  await throwIfNotOk(res);
+  return res.json();
+}
+
 export async function createNote(input: {
   title?: string;
   content: string;
@@ -115,6 +121,20 @@ export async function deleteNote(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/notes/${id}`, { ...fetchOpts, method: "DELETE" });
   if (res.ok || res.status === 204) return;
   await throwIfNotOk(res);
+}
+
+/** 用 R2 中该笔记已有 `media` 文件重写正文（上传中断、正文未合并时可恢复） */
+export async function rebuildNoteFromR2Media(
+  noteId: string,
+): Promise<{ noteId: string; imageCount: number }> {
+  const res = await fetch(`${API_BASE}/notes/${encodeURIComponent(noteId)}/rebuild-from-r2-media`, {
+    ...fetchOpts,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  await throwIfNotOk(res);
+  return res.json() as Promise<{ noteId: string; imageCount: number }>;
 }
 
 export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promise<void> {

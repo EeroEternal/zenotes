@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Note, NoteColor } from '@/types/note';
-import { X, Pin, Palette, Image, Tag as TagIcon, Loader2, Bold, Italic, List } from 'lucide-react';
+import { X, Pin, Palette, Image, Tag as TagIcon, Loader2, Bold, Italic, List, Trash2 } from 'lucide-react';
 import { noteContentToTipTapHtml, tipTapHtmlToNoteContent } from '@/lib/note-editor-serialization';
 import { createNoteEditorExtensions } from '@/lib/note-tiptap-extensions';
 import { noteMediaUrl } from '@/lib/note-media';
@@ -50,7 +51,7 @@ export function NoteDialog({
   open,
   onOpenChange,
   onUpdate,
-  onDelete: _onDelete,
+  onDelete,
   onTogglePin,
 }: NoteDialogProps) {
   const [title, setTitle] = useState('');
@@ -58,7 +59,9 @@ export function NoteDialog({
   const [tagsText, setTagsText] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [rebuildBusy, setRebuildBusy] = useState(false);
   const editorWrapRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const extensions = useMemo(() => createNoteEditorExtensions('Take a note...'), []);
 
@@ -81,9 +84,9 @@ export function NoteDialog({
 
   useEffect(() => {
     if (!editor || !open || !note) return;
-    const html = noteContentToTipTapHtml(note.content, note.id);
+    const html = noteContentToTipTapHtml(note.content ?? '', note.id);
     editor.commands.setContent(html, { emitUpdate: false });
-  }, [editor, open, note?.id]);
+  }, [editor, open, note?.id, note?.content]);
 
   const handleSave = () => {
     if (note && editor) {
@@ -99,6 +102,31 @@ export function NoteDialog({
       });
     }
     onOpenChange(false);
+  };
+
+  const handleDelete = () => {
+    if (!note) return;
+    if (!window.confirm('删除这条笔记？此操作无法撤销。')) return;
+    onDelete(note.id);
+    onOpenChange(false);
+  };
+
+  const handleRebuildFromR2 = async () => {
+    if (!note) return;
+    setRebuildBusy(true);
+    try {
+      const { imageCount } = await api.rebuildNoteFromR2Media(note.id);
+      await queryClient.refetchQueries({ queryKey: ['notes'] });
+      toast.success(`已从存储恢复正文（${imageCount} 张图）`);
+    } catch (e) {
+      toast.error(
+        e instanceof ApiError
+          ? e.message
+          : '无法从存储恢复，请检查网络后重试。若本笔记在云端没有图片，需重新上传。',
+      );
+    } finally {
+      setRebuildBusy(false);
+    }
   };
 
   const showTagsRow = Boolean(tagsText) || Boolean(editor && !editor.isEmpty);
@@ -249,7 +277,8 @@ export function NoteDialog({
           </div>
         )}
 
-        <div className="flex items-center gap-1 mt-6 pt-4 border-t border-border/30">
+        <div className="mt-6 pt-4 border-t border-border/30">
+          <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => onTogglePin(note.id)}
@@ -289,10 +318,29 @@ export function NoteDialog({
 
           <button
             type="button"
+            onClick={handleDelete}
+            className="p-2.5 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+            title="Delete note"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
             onClick={handleSave}
             className="ml-auto px-6 py-2 text-sm font-medium rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-sm"
           >
             Done
+          </button>
+          </div>
+          <button
+            type="button"
+            disabled={rebuildBusy}
+            onClick={handleRebuildFromR2}
+            title="批量传图若中断、正文仍为空，但图已在云端时，可写入正文，无需重传"
+            className="mt-2 text-xs text-muted-foreground hover:text-foreground w-full text-left pl-0.5 py-0.5 underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            {rebuildBusy ? '正在从存储恢复…' : '用已上传的图片恢复正文'}
           </button>
         </div>
       </DialogContent>

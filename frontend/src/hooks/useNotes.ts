@@ -1,8 +1,10 @@
 import { useMemo, useCallback } from "react";
 import type { Note, NoteColor } from "@/types/note";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import * as api from "@/lib/api";
+import { ApiError } from "@/lib/api-error";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
@@ -90,6 +92,10 @@ export function useNotes() {
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : "删除失败，请稍后重试";
+      toast.error(msg);
+    },
   });
 
   const moveMutation = useMutation({

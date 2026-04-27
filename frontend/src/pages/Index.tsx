@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { NoteInput } from '@/components/NoteInput';
 import { NotesGrid } from '@/components/NotesGrid';
@@ -29,6 +29,17 @@ export default function Index() {
     searchNotes,
     isImportingKeep,
   } = useNotes();
+
+  const handleDeleteNote = useCallback(
+    (id: string) => {
+      deleteNote(id);
+      if (id === selectedNoteId) {
+        setDialogOpen(false);
+        setSelectedNoteId(null);
+      }
+    },
+    [deleteNote, selectedNoteId],
+  );
 
   const handleNoteClick = (note: Note) => {
     setSelectedNoteId(note.id);
@@ -154,7 +165,7 @@ export default function Index() {
           unpinnedNotes={filteredUnpinned}
           onNoteClick={handleNoteClick}
           onTogglePin={togglePin}
-          onDelete={deleteNote}
+          onDelete={handleDeleteNote}
           onMove={moveNote}
           onTagClick={(tag) => setSelectedTag(tag)}
         />
@@ -165,7 +176,7 @@ export default function Index() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onUpdate={updateNote}
-        onDelete={deleteNote}
+        onDelete={handleDeleteNote}
         onTogglePin={togglePin}
       />
     </div>

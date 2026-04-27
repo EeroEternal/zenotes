@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Note, NoteColor } from '@/types/note';
 import { Pin, Palette, Trash2 } from 'lucide-react';
+import { parseNoteContentToNodes } from '@/lib/note-media';
 import { Badge } from "@/components/ui/badge";
 
 interface SortableNoteCardProps {
@@ -38,7 +39,11 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
     zIndex: isDragging ? 50 : undefined,
   };
 
-  const isLongContent = note.content.length > 150;
+  const raw = String(note.content ?? "");
+  const hasMedia = /(?:mynotes|zenotes):media:/i.test(raw);
+  const isLongContent = raw.length > 150;
+  /** 不用 line-clamp 套在多个子块上（纯文字在部分 WebKit 下会整块高度为 0） */
+  const longTextOnlyPreview = isLongContent && !hasMedia;
 
   return (
     <div
@@ -73,12 +78,19 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             {note.title}
           </h3>
         )}
-        <p className={`
-          text-sm text-foreground/75 whitespace-pre-wrap leading-relaxed
-           ${isLongContent ? 'line-clamp-6' : ''}
-        `}>
-          {note.content}
-        </p>
+        {raw.trim() ? (
+          <div
+            className={`
+            text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words
+            ${hasMedia ? 'max-h-[min(70vh,28rem)] overflow-y-auto' : ''}
+            ${longTextOnlyPreview ? 'max-h-[6.75rem] overflow-hidden' : ''}
+          `}
+          >
+            {parseNoteContentToNodes(raw, note.id, 'card')}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground/50">无正文</p>
+        )}
 
         {note.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -99,10 +111,10 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
         )}
       </div>
       
-      {/* Hover Actions */}
+      {/* 底栏：小屏/触摸无 hover，始终显示；桌面端可悬停再显 */}
       <div className="
         absolute bottom-2 left-2 right-2 flex items-center gap-0.5
-        opacity-0 group-hover:opacity-100 transition-opacity duration-300
+        opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300
       ">
         <button
           onClick={(e) => {
