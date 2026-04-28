@@ -22,6 +22,7 @@
 import process from "node:process";
 
 const EMBED_RE = /!\[([^\]]*)\]\((?:mynotes|zenotes):media:([0-9a-f-]{36})\)/gi;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function baseNorm(u) {
   return String(u || "")
@@ -85,14 +86,62 @@ function replaceWithNewIds(content, idMapByLower) {
   );
 }
 
+async function fetchWithRetry(url, init, label, max = 6) {
+  let lastErr;
+  for (let i = 1; i <= max; i++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status >= 500 || res.status === 429) {
+        const txt = await res.text();
+        if (i === max) {
+          throw new Error(`${label} ${res.status} ${txt.slice(0, 200)}`);
+        }
+        const wait = Math.min(8000, 250 * 2 ** (i - 1));
+        console.warn(`${label} ${res.status}，${wait}ms 后重试 (${i}/${max})`);
+        await sleep(wait);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (i === max) break;
+      const wait = Math.min(8000, 250 * 2 ** (i - 1));
+      console.warn(`${label} 网络异常，${wait}ms 后重试 (${i}/${max})`);
+      await sleep(wait);
+    }
+  }
+  throw lastErr || new Error(`${label} failed`);
+}
+
 async function getJson(url, cookie) {
-  const res = await fetch(url, { headers: { Cookie: cookie } });
+  const res = await fetchWithRetry(url, { headers: { Cookie: cookie } }, "GET JSON");
   if (!res.ok) throw new Error(`GET ${url} → ${res.status} ${await res.text()}`);
   return res.json();
 }
 
+function normalizeNotesPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.notes)) return payload.notes;
+  return [];
+}
+
+async function listAllNotes(base, cookie) {
+  const out = [];
+  let page = 1;
+  const pageSize = 100;
+  while (true) {
+    const payload = await getJson(`${base}/notes?page=${page}&pageSize=${pageSize}`, cookie);
+    const notes = normalizeNotesPayload(payload);
+    out.push(...notes);
+    const totalPages = Number(payload?.pagination?.totalPages || 1);
+    if (page >= totalPages || notes.length === 0) break;
+    page += 1;
+  }
+  return out;
+}
+
 async function getBuf(url, cookie) {
-  const res = await fetch(url, { headers: { Cookie: cookie } });
+  const res = await fetchWithRetry(url, { headers: { Cookie: cookie } }, "GET media");
   if (!res.ok) throw new Error(`GET media ${url} → ${res.status} ${await res.text()}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   const ct = res.headers.get("content-type") || "application/octet-stream";
@@ -133,51 +182,52 @@ async function main() {
   const srcCookie = await apiLogin(srcBase, srcUser, srcPass);
   const destCookie = await apiLogin(destBase, destUser, destPass);
 
-  const destExisting = await getJson(`${destBase}/notes`, destCookie);
-  if (Array.isArray(destExisting) && destExisting.length > 0 && !force) {
+  const destExisting = await listAllNotes(destBase, destCookie);
+  if (destExisting.length > 0 && !force) {
     console.error(
       `目标环境已有 ${destExisting.length} 条笔记。若仍要合并导入，请加上 --force（可能产生重复数据）。`,
     );
     process.exit(1);
   }
 
-  const notes = await getJson(`${srcBase}/notes`, srcCookie);
-  if (!Array.isArray(notes)) {
-    console.error("源 GET /notes 返回非数组", notes);
-    process.exit(1);
-  }
+  const notes = await listAllNotes(srcBase, srcCookie);
   if (notes.length === 0) {
     console.log("源无笔记，退出。");
     return;
   }
 
-  const newPinned = [];
-  const newUnpinned = [];
-  let ok = 0;
+  const concurrency = Math.max(1, Math.min(8, Number(process.env.PULL_CONCURRENCY) || 4));
+  console.log("并发:", concurrency);
 
-  for (const n of notes) {
+  let nextIndex = 0;
+  let ok = 0;
+  const results = new Array(notes.length);
+
+  async function processOne(n) {
     const sid = n.id;
     const oldContent = n.content ?? "";
     const refMap = extractMediaIdMap(oldContent);
-    const createRes = await fetch(`${destBase}/notes`, {
-      method: "POST",
-      headers: { Cookie: destCookie, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: n.title,
-        content: "",
-        color: n.color || "white",
-        tags: Array.isArray(n.tags) ? n.tags : [],
-      }),
-    });
+    const createRes = await fetchWithRetry(
+      `${destBase}/notes`,
+      {
+        method: "POST",
+        headers: { Cookie: destCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: n.title,
+          content: "",
+          color: n.color || "white",
+          tags: Array.isArray(n.tags) ? n.tags : [],
+        }),
+      },
+      "POST create note",
+    );
     if (!createRes.ok) {
-      console.error("创建失败", createRes.status, await createRes.text());
-      process.exit(1);
+      throw new Error(`创建失败 ${createRes.status} ${await createRes.text()}`);
     }
     const created = await createRes.json();
     const did = created.id;
     if (!did) {
-      console.error("创建响应无 id", created);
-      process.exit(1);
+      throw new Error(`创建响应无 id ${JSON.stringify(created)}`);
     }
 
     const idMapByLower = new Map();
@@ -186,14 +236,17 @@ async function main() {
         `${srcBase}/notes/${encodeURIComponent(sid)}/media/${encodeURIComponent(exactId)}`,
         srcCookie,
       );
-      const up = await fetch(`${destBase}/notes/${encodeURIComponent(did)}/media`, {
-        method: "POST",
-        headers: { Cookie: destCookie, "Content-Type": contentType },
-        body: buf,
-      });
+      const up = await fetchWithRetry(
+        `${destBase}/notes/${encodeURIComponent(did)}/media`,
+        {
+          method: "POST",
+          headers: { Cookie: destCookie, "Content-Type": contentType },
+          body: buf,
+        },
+        "POST media",
+      );
       if (!up.ok) {
-        console.error("上传媒体失败", exactId, up.status, await up.text());
-        process.exit(1);
+        throw new Error(`上传媒体失败 ${exactId} ${up.status} ${await up.text()}`);
       }
       const { id: newId } = await up.json();
       idMapByLower.set(low, newId);
@@ -202,35 +255,65 @@ async function main() {
     let newContent = replaceWithNewIds(oldContent, idMapByLower);
     newContent = newContent.replace(/mynotes:media:/gi, "zenotes:media:");
 
-    const patchRes = await fetch(`${destBase}/notes/${encodeURIComponent(did)}`, {
-      method: "PATCH",
-      headers: { Cookie: destCookie, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: n.title,
-        content: newContent.trimEnd(),
-        color: n.color,
-        tags: Array.isArray(n.tags) ? n.tags : [],
-        pinned: Boolean(n.pinned),
-      }),
-    });
+    const patchRes = await fetchWithRetry(
+      `${destBase}/notes/${encodeURIComponent(did)}`,
+      {
+        method: "PATCH",
+        headers: { Cookie: destCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: n.title,
+          content: newContent.trimEnd(),
+          color: n.color,
+          tags: Array.isArray(n.tags) ? n.tags : [],
+          pinned: Boolean(n.pinned),
+        }),
+      },
+      "PATCH note",
+    );
     if (!patchRes.ok) {
-      console.error("PATCH 失败", patchRes.status, await patchRes.text());
-      process.exit(1);
+      throw new Error(`PATCH 失败 ${patchRes.status} ${await patchRes.text()}`);
     }
-    if (n.pinned) newPinned.push(did);
-    else newUnpinned.push(did);
-    ok += 1;
-    console.log(`[${ok}/${notes.length}] ${did} ← ${sid}`);
+    return { did, sid, pinned: Boolean(n.pinned) };
+  }
+
+  async function workerLoop() {
+    while (true) {
+      const i = nextIndex;
+      nextIndex += 1;
+      if (i >= notes.length) return;
+      const n = notes[i];
+      try {
+        const r = await processOne(n);
+        results[i] = r;
+        ok += 1;
+        if (ok % 20 === 0 || ok === notes.length) {
+          console.log(`[${ok}/${notes.length}] latest ${r.did} ← ${r.sid}`);
+        }
+      } catch (e) {
+        console.error(`同步失败 at ${i + 1}/${notes.length} sid=${n.id}`, e instanceof Error ? e.message : e);
+        throw e;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => workerLoop()));
+
+  const newPinned = [];
+  const newUnpinned = [];
+  for (const r of results) {
+    if (!r) continue;
+    if (r.pinned) newPinned.push(r.did);
+    else newUnpinned.push(r.did);
   }
 
   for (const pinned of [true, false]) {
     const ids = pinned ? newPinned : newUnpinned;
     if (ids.length === 0) continue;
-    const r = await fetch(`${destBase}/notes/reorder`, {
+    const r = await fetchWithRetry(`${destBase}/notes/reorder`, {
       method: "POST",
       headers: { Cookie: destCookie, "Content-Type": "application/json" },
       body: JSON.stringify({ pinned, orderedIds: ids }),
-    });
+    }, "POST reorder");
     if (!r.ok) {
       console.warn("reorder 失败（可忽略，顺序或略有偏差）", r.status, await r.text());
     }
