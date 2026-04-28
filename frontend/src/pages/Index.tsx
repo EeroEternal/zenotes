@@ -7,6 +7,15 @@ import { NoteDialog } from '@/components/NoteDialog';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/note';
 import { toast } from 'sonner';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination';
 
 export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,6 +37,11 @@ export default function Index() {
     importGoogleKeep,
     searchNotes,
     isImportingKeep,
+    pagination,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
   } = useNotes();
 
   const handleDeleteNote = useCallback(
@@ -61,8 +75,10 @@ export default function Index() {
   const searched = searchQuery ? searchNotes(searchQuery) : notes;
   const filtered = selectedTag ? searched.filter((n) => n.tags?.includes(selectedTag)) : searched;
 
-  const filteredPinned = filtered.filter((n) => n.pinned).sort((a, b) => a.position - b.position);
-  const filteredUnpinned = filtered.filter((n) => !n.pinned).sort((a, b) => a.position - b.position);
+  const byPos = (a: Note, b: Note) =>
+    (Number.isFinite(a.position) ? a.position : 0) - (Number.isFinite(b.position) ? b.position : 0);
+  const filteredPinned = filtered.filter((n) => n.pinned).sort(byPos);
+  const filteredUnpinned = filtered.filter((n) => !n.pinned).sort(byPos);
 
   const handleImportKeepClick = () => keepInputRef.current?.click();
 
@@ -169,6 +185,62 @@ export default function Index() {
           onMove={moveNote}
           onTagClick={(tag) => setSelectedTag(tag)}
         />
+
+        {/* 分页控件 */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex justify-center mt-8 mb-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+
+                {/* 页码按钮 */}
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (page <= 3) {
+                    pageNum = i + 1;
+                  } else if (page >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = page - 2 + i;
+                  }
+
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        onClick={() => setPage(pageNum)}
+                        isActive={page === pageNum}
+                        className="cursor-pointer"
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+
+                <PaginationItem>
+                  <PaginationNext 
+                    onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
+                    className={page >= pagination.totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
+
+        {/* Pagination info */}
+        {pagination && (
+          <div className="text-center text-sm text-muted-foreground mb-8">
+            {pagination.total} notes total, Page {page} / {pagination.totalPages}
+          </div>
+        )}
       </main>
 
       <NoteDialog

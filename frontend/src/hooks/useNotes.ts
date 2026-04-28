@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import type { Note, NoteColor } from "@/types/note";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,6 +8,10 @@ import { ApiError } from "@/lib/api-error";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
+
+function sortPosition(n: Note): number {
+  return Number.isFinite(n.position) ? n.position : 0;
+}
 
 function computeMove(
   notes: Note[],
@@ -20,8 +24,8 @@ function computeMove(
   unpinnedIds: string[];
   pinnedChanged: boolean;
 } {
-  const pinnedNotes = notes.filter((n) => n.pinned).sort((a, b) => a.position - b.position);
-  const unpinnedNotes = notes.filter((n) => !n.pinned).sort((a, b) => a.position - b.position);
+  const pinnedNotes = notes.filter((n) => n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b));
+  const unpinnedNotes = notes.filter((n) => !n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b));
 
   const active = notes.find((n) => n.id === activeId);
   if (!active) {
@@ -69,14 +73,17 @@ function computeMove(
 
 export function useNotes() {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   const notesQuery = useQuery({
-    queryKey: ["notes"],
-    queryFn: api.fetchNotes,
-    initialData: [],
+    queryKey: ["notes", page, pageSize],
+    queryFn: () => api.fetchNotes(page, pageSize),
+    initialData: { notes: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } },
   });
 
-  const notes = notesQuery.data;
+  const notes = notesQuery.data?.notes ?? [];
+  const pagination = notesQuery.data?.pagination;
 
   const addNoteMutation = useMutation({
     mutationFn: (input: { content: string; title?: string; color?: NoteColor; tags?: string[] }) =>
@@ -177,17 +184,20 @@ export function useNotes() {
       const lowerQuery = query.toLowerCase();
       return notes.filter(
         (note) =>
-          note.content.toLowerCase().includes(lowerQuery) ||
+          (note.content ?? "").toLowerCase().includes(lowerQuery) ||
           note.title?.toLowerCase().includes(lowerQuery) ||
-          note.tags.some((t) => t.toLowerCase().includes(lowerQuery)),
+          (note.tags ?? []).some((t) => t.toLowerCase().includes(lowerQuery)),
       );
     },
     [notes],
   );
 
-  const pinnedNotes = useMemo(() => notes.filter((n) => n.pinned).sort((a, b) => a.position - b.position), [notes]);
+  const pinnedNotes = useMemo(
+    () => notes.filter((n) => n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b)),
+    [notes],
+  );
   const unpinnedNotes = useMemo(
-    () => notes.filter((n) => !n.pinned).sort((a, b) => a.position - b.position),
+    () => notes.filter((n) => !n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b)),
     [notes],
   );
 
@@ -205,5 +215,10 @@ export function useNotes() {
     isImportingKeep: importGoogleKeepMutation.isPending,
     isLoading: notesQuery.isLoading,
     isError: notesQuery.isError,
+    pagination,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
   };
 }

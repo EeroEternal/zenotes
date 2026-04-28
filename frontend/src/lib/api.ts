@@ -77,11 +77,29 @@ export async function logout(): Promise<void> {
   await throwIfNotOk(res);
 }
 
-export async function fetchNotes(): Promise<Note[]> {
-  const res = await fetch(`${API_BASE}/notes`, fetchOpts);
-  if (res.status === 401) return [];
+export interface NotesResponse {
+  notes: Note[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export async function fetchNotes(page = 1, pageSize = 50): Promise<NotesResponse> {
+  const url = `${API_BASE}/notes?page=${page}&pageSize=${pageSize}`;
+  console.log('[API] Fetching notes:', url);
+  const res = await fetch(url, fetchOpts);
+  console.log('[API] Response status:', res.status);
+  if (res.status === 401) {
+    console.warn('[API] Unauthorized');
+    return { notes: [], pagination: { page: 1, pageSize, total: 0, totalPages: 0 } };
+  }
   await throwIfNotOk(res);
-  return res.json();
+  const data = await res.json();
+  console.log('[API] Response data:', data);
+  return data;
 }
 
 export async function fetchNote(id: string): Promise<Note> {

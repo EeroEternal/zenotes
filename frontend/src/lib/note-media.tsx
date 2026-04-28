@@ -187,6 +187,11 @@ export function parseNoteContentToNodes(
       />,
     );
   }
+  if (parts.length === 0 && content.trim()) {
+    return [
+      <NoteTextChunkMarkdown key="t-fallback" text={content} noteId={noteId} layout={layout} />,
+    ];
+  }
   return parts.length ? parts : [];
 }
 

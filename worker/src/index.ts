@@ -572,12 +572,18 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 }
 
 async function listNotes(env: Env, request: Request, userId: number): Promise<Response> {
+  const url = new URL(request.url);
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+  const pageSize = Math.max(1, Math.min(100, parseInt(url.searchParams.get("pageSize") ?? "50", 10)));
+  const offset = (page - 1) * pageSize;
+
   const { results } = await env.DB.prepare(
     `SELECT id, user_id, title, color, tags, pinned, position, r2_key, created_at, updated_at
      FROM notes WHERE user_id = ?
-     ORDER BY pinned DESC, position ASC, updated_at DESC`,
+     ORDER BY pinned DESC, position ASC, updated_at DESC
+     LIMIT ? OFFSET ?`,
   )
-    .bind(userId)
+    .bind(userId, pageSize, offset)
     .all<NoteRow>();
 
   const rows = results ?? [];
@@ -588,7 +594,24 @@ async function listNotes(env: Env, request: Request, userId: number): Promise<Re
     }),
   );
 
-  return json(env, request, withContent);
+  const countResult = await env.DB.prepare(
+    "SELECT COUNT(*) as total FROM notes WHERE user_id = ?",
+  )
+    .bind(userId)
+    .first<{ total: number }>();
+
+  const total = countResult?.total ?? 0;
+  const totalPages = Math.ceil(total / pageSize);
+
+  return json(env, request, {
+    notes: withContent,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages,
+    },
+  });
 }
 
 async function createNote(request: Request, env: Env, userId: number): Promise<Response> {

@@ -11,7 +11,7 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: "http://127.0.0.1:8788",
         changeOrigin: true,
         /** 避免部分环境下 POST 二进制体或 Cookie 未正确传到 Wrangler */
         configure(proxy) {

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
  * 将本地目录中的图片批量上传到 Zenotes。
- * 默认：一条笔记里嵌多图。若希望「每张图一条笔记、列表都看得见」，加 --per-image
+ * 默认：每张图一条笔记（列表里逐条出现）。若要把同一目录全部图塞进一条笔记，加 --all-in-one
  *
  *   export ZENOTES_API_BASE=https://api.zenotes.site/api
  *   export ZENOTES_USER=lipi
  *   read -s ZENOTES_PASSWORD; export ZENOTES_PASSWORD
  *   node scripts/upload-capture-to-zenotes.mjs /path/to/capture
- *   # 每张图单独建一条笔记（列表里逐条出现，不挤在同一条里）：
- *   node scripts/upload-capture-to-zenotes.mjs --per-image /path/to/capture
+ *   # 多图同一条（旧默认行为）：
+ *   node scripts/upload-capture-to-zenotes.mjs --all-in-one /path/to/capture
+ *   # 同义：--per-image / -1
  *   node scripts/upload-capture-to-zenotes.mjs --probe
  *
  * 大批量上传（数百张）易遇 EPIPE/断连，可调：
@@ -85,14 +86,19 @@ function normOpt(s) {
 function parseArgs() {
   const argv = process.argv.slice(2);
   let recursive = false;
-  let perImage = false;
+  /** true = 多图合一条；false = 每图一条（默认） */
+  let allInOne = false;
   const positionals = [];
 
   for (const a of argv) {
     const n = normOpt(a);
     if (n === "--probe") continue;
+    if (n === "--all-in-one" || n === "--single-note" || n === "--batch") {
+      allInOne = true;
+      continue;
+    }
     if (n === "--per-image" || n === "-1" || n === "--one-per-image") {
-      perImage = true;
+      allInOne = false;
       continue;
     }
     if (n === "--recursive" || n === "-r") {
@@ -117,10 +123,10 @@ function parseArgs() {
     process.exit(1);
   }
   if ((!dir || dir === "") && !probe) {
-    console.error("用法: node scripts/upload-capture-to-zenotes.mjs [--probe] [--per-image] [--recursive] <图片目录>");
+    console.error("用法: node scripts/upload-capture-to-zenotes.mjs [--probe] [--all-in-one] [--recursive] <图片目录>");
     process.exit(1);
   }
-  return { dir: dir != null && dir !== "" ? dir : "", recursive, perImage, probe };
+  return { dir: dir != null && dir !== "" ? dir : "", recursive, allInOne, probe };
 }
 
 function cookieFromResponse(res) {
@@ -175,7 +181,7 @@ function sameNoteId(a, b) {
 }
 
 async function main() {
-  let { dir, recursive, perImage, probe } = parseArgs();
+  let { dir, recursive, allInOne, probe } = parseArgs();
   if (process.argv.slice(2).some((a) => normOpt(a) === "--probe")) probe = true;
   if (dir && normOpt(String(dir)) === "--probe") {
     dir = "";
@@ -202,14 +208,10 @@ async function main() {
     console.log("未找到可上传的图片。");
     process.exit(0);
   }
-  if (perImage && probe) {
-    console.error("probe 与 --per-image 不能同时用。probe 不扫目录；正式上传时再加 --per-image。");
-    process.exit(1);
-  }
   console.log(
     probe
       ? "probe 模式：开始登录…"
-      : (perImage ? "每张一笔记，共 " : "单笔记共嵌 ") + files.length + " 张图，开始登录…",
+      : (allInOne ? "单笔记共嵌 " : "每张一笔记，共 ") + files.length + " 张图，开始登录…",
   );
 
   const loginRes = await fetch(base + "/auth/login", {
@@ -228,37 +230,27 @@ async function main() {
   }
   const authHeaders = { Cookie: cookie, "Content-Type": "application/json" };
 
-  if (!perImage) {
-  const createRes = await fetch(base + "/notes", {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify({
-      title: "Capture 导入 " + new Date().toISOString().slice(0, 10),
-      content: "",
-      color: "white",
-      tags: ["capture"],
-    }),
-  });
-  if (!createRes.ok) {
-    console.error("创建笔记失败", createRes.status, await createRes.text());
-    process.exit(1);
-  }
-  const note = await createRes.json();
-  const noteId = extractNoteId(note);
-  if (!noteId) {
-    console.error("创建笔记无 id", note);
-    process.exit(1);
-  }
-  const listRes = await fetch(base + "/notes", { headers: { Cookie: cookie } });
-  if (listRes.ok) {
-    const all = await listRes.json();
-    if (Array.isArray(all) && !all.some((n) => sameNoteId(extractNoteId(n), noteId))) {
-      console.warn("GET /notes 未列出刚建的笔记 id。");
-    }
-  }
-  console.log("已创建笔记", noteId, probe ? "probe 试传…" : "开始上传…");
-
   if (probe) {
+    const createRes = await fetch(base + "/notes", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        title: "probe " + new Date().toISOString().slice(0, 10),
+        content: "",
+        color: "white",
+        tags: ["capture"],
+      }),
+    });
+    if (!createRes.ok) {
+      console.error("创建笔记失败", createRes.status, await createRes.text());
+      process.exit(1);
+    }
+    const note = await createRes.json();
+    const noteId = extractNoteId(note);
+    if (!noteId) {
+      console.error("创建笔记无 id", note);
+      process.exit(1);
+    }
     const patchUrl = `${base}/notes/${encodeURIComponent(noteId)}`;
     const mediaUrl = `${base}/notes/${encodeURIComponent(noteId)}/media`;
     const patchProbe = await fetch(patchUrl, {
@@ -287,6 +279,36 @@ async function main() {
     console.log("probe 成功:", t);
     process.exit(0);
   }
+
+  if (allInOne) {
+  const createRes = await fetch(base + "/notes", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({
+      title: "Capture 导入 " + new Date().toISOString().slice(0, 10),
+      content: "",
+      color: "white",
+      tags: ["capture"],
+    }),
+  });
+  if (!createRes.ok) {
+    console.error("创建笔记失败", createRes.status, await createRes.text());
+    process.exit(1);
+  }
+  const note = await createRes.json();
+  const noteId = extractNoteId(note);
+  if (!noteId) {
+    console.error("创建笔记无 id", note);
+    process.exit(1);
+  }
+  const listRes = await fetch(base + "/notes", { headers: { Cookie: cookie } });
+  if (listRes.ok) {
+    const all = await listRes.json();
+    if (Array.isArray(all) && !all.some((n) => sameNoteId(extractNoteId(n), noteId))) {
+      console.warn("GET /notes 未列出刚建的笔记 id。");
+    }
+  }
+  console.log("已创建笔记", noteId, "开始上传…");
 
   const lines = [];
   let ok = 0;
