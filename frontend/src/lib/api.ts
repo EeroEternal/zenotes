@@ -7,6 +7,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 const fetchOpts: RequestInit = { credentials: "include" };
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  if (typeof AbortController === "undefined") {
+    return fetch(url, init);
+  }
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type ImportGoogleKeepResult = {
   totalFiles: number;
   importedCount: number;
@@ -31,13 +44,12 @@ export async function fetchAuthMe(): Promise<CurrentUser | null> {
 export async function login(username: string, password: string): Promise<CurrentUser> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/auth/login`, {
+    res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
       ...fetchOpts,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
-      signal: AbortSignal.timeout(AUTH_FETCH_MS),
-    });
+    }, AUTH_FETCH_MS);
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
       throw new ApiError("Sign-in request timed out. Check your network and try again.");
@@ -55,13 +67,12 @@ export async function register(input: {
 }): Promise<CurrentUser> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/auth/register`, {
+    res = await fetchWithTimeout(`${API_BASE}/auth/register`, {
       ...fetchOpts,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
-      signal: AbortSignal.timeout(AUTH_FETCH_MS),
-    });
+    }, AUTH_FETCH_MS);
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
       throw new ApiError("Registration request timed out. Check your network and try again.");
