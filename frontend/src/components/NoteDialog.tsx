@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Note, NoteColor } from '@/types/note';
 import { X, Pin, Palette, Image, Tag as TagIcon, Loader2, Bold, Italic, List, Trash2 } from 'lucide-react';
@@ -46,6 +45,9 @@ const editorShellClass = `
   focus-within:outline-none
 `;
 
+const arraysEqual = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((item, index) => item === b[index]);
+
 export function NoteDialog({
   note,
   open,
@@ -59,9 +61,7 @@ export function NoteDialog({
   const [tagsText, setTagsText] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
-  const [rebuildBusy, setRebuildBusy] = useState(false);
   const editorWrapRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
 
   const extensions = useMemo(() => createNoteEditorExtensions('Take a note...'), []);
 
@@ -88,20 +88,36 @@ export function NoteDialog({
     editor.commands.setContent(html, { emitUpdate: false });
   }, [editor, open, note?.id, note?.content]);
 
-  const handleSave = () => {
-    if (note && editor) {
-      const tags = tagsText
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
+  const persistChanges = () => {
+    if (!note) return;
 
-      onUpdate(note.id, {
-        title: title.trim() || undefined,
-        content: tipTapHtmlToNoteContent(editor.getHTML()),
-        tags,
-      });
-    }
+    const tags = tagsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const nextTitle = title.trim() || undefined;
+    const nextContent = editor ? tipTapHtmlToNoteContent(editor.getHTML()) : note.content ?? '';
+
+    const titleChanged = nextTitle !== (note.title || undefined);
+    const contentChanged = nextContent !== (note.content ?? '');
+    const tagsChanged = !arraysEqual(tags, note.tags ?? []);
+    if (!titleChanged && !contentChanged && !tagsChanged) return;
+
+    onUpdate(note.id, {
+      title: nextTitle,
+      content: nextContent,
+      tags,
+    });
+  };
+
+  const handleSave = () => {
+    persistChanges();
     onOpenChange(false);
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) persistChanges();
+    onOpenChange(nextOpen);
   };
 
   const handleDelete = () => {
@@ -111,30 +127,12 @@ export function NoteDialog({
     onOpenChange(false);
   };
 
-  const handleRebuildFromR2 = async () => {
-    if (!note) return;
-    setRebuildBusy(true);
-    try {
-      const { imageCount } = await api.rebuildNoteFromR2Media(note.id);
-      await queryClient.refetchQueries({ queryKey: ['notes'] });
-      toast.success(`已从存储恢复正文（${imageCount} 张图）`);
-    } catch (e) {
-      toast.error(
-        e instanceof ApiError
-          ? e.message
-          : '无法从存储恢复，请检查网络后重试。若本笔记在云端没有图片，需重新上传。',
-      );
-    } finally {
-      setRebuildBusy(false);
-    }
-  };
-
   const showTagsRow = Boolean(tagsText) || Boolean(editor && !editor.isEmpty);
 
   if (!note) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange} modal={false}>
       <DialogContent
         overlayClassName="bg-black/55 backdrop-blur-[2px]"
         className={`
@@ -153,7 +151,7 @@ export function NoteDialog({
 
         <button
           type="button"
-          onClick={() => onOpenChange(false)}
+          onClick={() => handleDialogOpenChange(false)}
           className="absolute top-4 right-4 p-2 rounded-xl hover:bg-foreground/8 transition-colors z-10"
         >
           <X className="w-5 h-5 text-muted-foreground" />
@@ -333,15 +331,6 @@ export function NoteDialog({
             Done
           </button>
           </div>
-          <button
-            type="button"
-            disabled={rebuildBusy}
-            onClick={handleRebuildFromR2}
-            title="批量传图若中断、正文仍为空，但图已在云端时，可写入正文，无需重传"
-            className="mt-2 text-xs text-muted-foreground hover:text-foreground w-full text-left pl-0.5 py-0.5 underline-offset-2 hover:underline disabled:opacity-50"
-          >
-            {rebuildBusy ? '正在从存储恢复…' : '用已上传的图片恢复正文'}
-          </button>
         </div>
       </DialogContent>
     </Dialog>
