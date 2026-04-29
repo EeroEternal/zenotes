@@ -6,12 +6,15 @@ import { toast } from 'sonner';
 import * as api from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { insertMediaMarkdown } from '@/lib/note-media';
+import { cn } from '@/lib/utils';
 
 interface NoteInputProps {
   onAddNote: (content: string, title?: string, color?: NoteColor, tags?: string[]) => void;
+  compact?: boolean;
+  className?: string;
 }
 
-export function NoteInput({ onAddNote }: NoteInputProps) {
+export function NoteInput({ onAddNote, compact = false, className }: NoteInputProps) {
   const queryClient = useQueryClient();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -64,32 +67,33 @@ export function NoteInput({ onAddNote }: NoteInputProps) {
 
   if (!isExpanded) {
     return (
-      <div className="w-full max-w-2xl mx-auto">
+      <div className={cn("w-full", className)}>
         <div
           onClick={() => setIsExpanded(true)}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          className={`
-            w-full bg-card rounded-2xl border border-border/50
-            transition-all duration-300 cursor-text
-            p-5 flex items-center gap-4
-            ${isHovered ? 'shadow-note-hover border-border -translate-y-0.5' : 'shadow-note'}
-          `}
+          className={cn(
+            "w-full bg-card rounded-2xl border border-border/50 transition-all duration-300 cursor-text flex items-center",
+            compact ? "p-4 gap-3" : "p-5 gap-4",
+            isHovered ? "shadow-note-hover border-border -translate-y-0.5" : "shadow-note",
+          )}
         >
-          <div className={`
-            w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300
-            ${isHovered ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}
-          `}>
+          <div className={cn(
+            "rounded-xl flex items-center justify-center transition-all duration-300",
+            compact ? "w-9 h-9" : "w-10 h-10",
+            isHovered ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
+          )}>
             {isHovered ? (
               <Feather className="w-5 h-5 animate-scale-in" />
             ) : (
               <Plus className="w-5 h-5 animate-scale-in" />
             )}
           </div>
-          <span className={`
-            text-[15px] transition-colors duration-200
-            ${isHovered ? 'text-foreground' : 'text-muted-foreground'}
-          `}>
+          <span className={cn(
+            "transition-colors duration-200",
+            compact ? "text-[14px]" : "text-[15px]",
+            isHovered ? 'text-foreground' : 'text-muted-foreground',
+          )}>
             Take a note...
           </span>
         </div>
@@ -99,7 +103,7 @@ export function NoteInput({ onAddNote }: NoteInputProps) {
 
   return (
     <>
-      <div className="w-full max-w-2xl mx-auto -mt-3" />
+      <div className={cn("w-full -mt-3", compact ? "max-w-none" : "max-w-2xl mx-auto")} />
       
       <div 
         className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
