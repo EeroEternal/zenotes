@@ -88,12 +88,23 @@ export function useNotes() {
   const addNoteMutation = useMutation({
     mutationFn: (input: { content: string; title?: string; color?: NoteColor; tags?: string[] }) =>
       api.createNote(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onSuccess: () => {
+      setPage(1);
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : "保存失败，请稍后重试";
+      toast.error(msg);
+    },
   });
 
   const updateNoteMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<Note> }) => api.updateNote(id, updates),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : "更新失败，请稍后重试";
+      toast.error(msg);
+    },
   });
 
   const deleteNoteMutation = useMutation({

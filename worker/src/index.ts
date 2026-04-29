@@ -628,12 +628,12 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
   const color = body.color ?? "white";
   const tagsJson = JSON.stringify(body.tags ?? []);
 
-  const maxRow = await env.DB.prepare(
-    "SELECT COALESCE(MAX(position), 0) as m FROM notes WHERE user_id = ? AND pinned = 0",
+  const topRow = await env.DB.prepare(
+    "SELECT COALESCE(MIN(position), 1) as m FROM notes WHERE user_id = ? AND pinned = 0",
   )
     .bind(userId)
     .first<{ m: number }>();
-  const position = (maxRow?.m ?? 0) + 1;
+  const position = (topRow?.m ?? 1) - 1;
 
   const id = crypto.randomUUID();
   const r2Key = r2BodyKey(String(userId), id);
