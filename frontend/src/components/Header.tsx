@@ -1,4 +1,4 @@
-import { Download, NotebookPen, Settings, LogOut, User } from "lucide-react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X } from "lucide-react";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -38,12 +38,20 @@ function toastAuthError(err: unknown, fallback: string) {
 interface HeaderProps {
   onImportKeep: () => void;
   isImportingKeep: boolean;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
-export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
+export function Header({
+  onImportKeep,
+  isImportingKeep,
+  searchQuery,
+  onSearchChange,
+}: HeaderProps) {
   const queryClient = useQueryClient();
   const [loginOpen, setLoginOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -101,7 +109,7 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 glass-effect border-b border-border/30">
-      <div className="container mx-auto px-6 h-20 flex items-center justify-between">
+      <div className="container mx-auto px-6 h-20 grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3 sm:gap-4">
         <div className="flex items-center gap-4 cursor-pointer">
           <div className="relative">
             <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-xl" />
@@ -113,6 +121,35 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
             <h1 className="text-2xl font-display text-foreground tracking-tight">Zenotes</h1>
             <p className="text-xs text-muted-foreground">Capture your thoughts</p>
           </div>
+        </div>
+
+        <div
+          className={`
+            relative flex items-center w-full max-w-2xl justify-self-center rounded-2xl border transition-all duration-300
+            ${isSearchFocused ? "bg-card shadow-note-hover border-border" : "bg-secondary/60 border-transparent hover:bg-secondary/80"}
+          `}
+        >
+          <Search
+            className={`absolute left-4 w-4 h-4 transition-colors duration-200 ${isSearchFocused ? "text-primary" : "text-muted-foreground"}`}
+          />
+          <input
+            type="text"
+            value={searchQuery ?? ""}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Search notes..."
+            className="w-full py-2.5 pl-11 pr-10 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+          {(searchQuery ?? "").length > 0 && (
+            <button
+              onClick={() => onSearchChange?.("")}
+              className="absolute right-3 p-1 rounded-lg hover:bg-foreground/8 transition-colors"
+              title="Clear"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
