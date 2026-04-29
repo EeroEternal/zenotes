@@ -1,4 +1,4 @@
-import { Download, NotebookPen, Settings, LogOut, User } from "lucide-react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X } from "lucide-react";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -42,10 +42,16 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void;
 }
 
-export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
+export function Header({
+  onImportKeep,
+  isImportingKeep,
+  searchQuery,
+  onSearchChange,
+}: HeaderProps) {
   const queryClient = useQueryClient();
   const [loginOpen, setLoginOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -117,7 +123,35 @@ export function Header({ onImportKeep, isImportingKeep }: HeaderProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div
+            className={`
+              relative flex items-center w-44 sm:w-64 md:w-[min(42vw,30rem)] rounded-2xl border transition-all duration-300
+              ${isSearchFocused ? "bg-card shadow-note-hover border-border" : "bg-secondary/60 border-transparent hover:bg-secondary/80"}
+            `}
+          >
+            <Search
+              className={`absolute left-4 w-4 h-4 transition-colors duration-200 ${isSearchFocused ? "text-primary" : "text-muted-foreground"}`}
+            />
+            <input
+              type="text"
+              value={searchQuery ?? ""}
+              onChange={(e) => onSearchChange?.(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              placeholder="Search notes..."
+              className="w-full py-2.5 pl-11 pr-10 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
+            {(searchQuery ?? "").length > 0 && (
+              <button
+                onClick={() => onSearchChange?.("")}
+                className="absolute right-3 p-1 rounded-lg hover:bg-foreground/8 transition-colors"
+                title="Clear"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center cursor-pointer border border-primary/10 hover:border-primary/30 hover:shadow-sm transition-all outline-none">

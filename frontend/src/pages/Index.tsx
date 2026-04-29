@@ -1,4 +1,3 @@
-import { Search, X } from 'lucide-react';
 import { useMemo, useRef, useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { NoteInput } from '@/components/NoteInput';
@@ -19,7 +18,6 @@ import {
 
 export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -111,43 +109,13 @@ export default function Index() {
       <Header 
         onImportKeep={handleImportKeepClick}
         isImportingKeep={isImportingKeep}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
       
       <main className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="rounded-3xl border border-border/50 bg-card/55 shadow-sm backdrop-blur-sm p-3 sm:p-4">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-center">
-              <div className={`
-                relative flex items-center w-full
-                rounded-2xl border transition-all duration-300
-                ${isSearchFocused 
-                  ? 'bg-card shadow-note-hover border-border' 
-                  : 'bg-secondary/60 border-transparent hover:bg-secondary/80'
-                }
-              `}>
-                <Search className={`absolute left-5 w-5 h-5 transition-colors duration-200 ${isSearchFocused ? 'text-primary' : 'text-muted-foreground'}`} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  placeholder="Search notes..."
-                  className="w-full py-4 pl-14 pr-12 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-[15px]"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-4 p-1.5 rounded-lg hover:bg-foreground/8 transition-colors"
-                    title="Clear"
-                  >
-                    <X className="w-4 h-4 text-muted-foreground" />
-                  </button>
-                )}
-              </div>
-              <NoteInput onAddNote={addNote} compact />
-            </div>
-          </div>
+        <div className="max-w-2xl mx-auto">
+          <NoteInput onAddNote={addNote} />
         </div>
 
         {allTags.length > 0 && (
