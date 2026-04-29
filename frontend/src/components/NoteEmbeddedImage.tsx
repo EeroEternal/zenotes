@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { X, ZoomIn } from "lucide-react";
 
@@ -23,6 +23,7 @@ export function NoteEmbeddedImage({
 }) {
   const [lightbox, setLightbox] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const canOpenByThumbnail = variant === "dialog";
 
   useEffect(() => {
     setMounted(true);
@@ -42,14 +43,33 @@ export function NoteEmbeddedImage({
     };
   }, [lightbox]);
 
+  const openLightbox = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLightbox(true);
+  };
+
+  const handleThumbnailClick = (e: MouseEvent) => {
+    if (!canOpenByThumbnail) return;
+    openLightbox(e);
+  };
+
+  const closeLightbox = (e?: MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setLightbox(false);
+  };
+
   return (
     <>
       <figure className="group relative my-2 mx-auto w-full max-w-full">
         <button
           type="button"
-          className="block w-full cursor-zoom-in text-left outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
-          onClick={() => setLightbox(true)}
-          aria-label="View larger image"
+          className={`block w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg ${
+            canOpenByThumbnail ? "cursor-zoom-in" : "cursor-pointer"
+          }`}
+          onClick={handleThumbnailClick}
+          aria-label={canOpenByThumbnail ? "View larger image" : "Open note"}
         >
           <img
             src={src}
@@ -65,8 +85,7 @@ export function NoteEmbeddedImage({
           aria-label="View larger"
           className="absolute right-1.5 top-1.5 rounded-lg bg-background/95 p-1.5 text-foreground shadow-md ring-1 ring-border/60 opacity-90 transition-opacity hover:opacity-100"
           onClick={(e) => {
-            e.stopPropagation();
-            setLightbox(true);
+            openLightbox(e);
           }}
         >
           <ZoomIn className="h-4 w-4" />
@@ -81,13 +100,13 @@ export function NoteEmbeddedImage({
             aria-modal="true"
             aria-label="Image preview"
             className="fixed inset-0 z-[500] flex items-center justify-center bg-black/88 p-3 backdrop-blur-sm"
-            onClick={() => setLightbox(false)}
+            onClick={(e) => closeLightbox(e)}
           >
             <button
               type="button"
               className="absolute right-3 top-3 z-[510] rounded-full bg-background/95 p-2 text-foreground shadow-lg ring-1 ring-border hover:bg-muted"
               aria-label="Close"
-              onClick={() => setLightbox(false)}
+              onClick={(e) => closeLightbox(e)}
             >
               <X className="h-5 w-5" />
             </button>
