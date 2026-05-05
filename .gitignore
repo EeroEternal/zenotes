@@ -1,3 +1,9 @@
+# cusor
+.cursor/
+
+# wrangler
+.wrangler
+
 # dependencies
 node_modules/
 
@@ -39,3 +45,4 @@ Cargo.lock
 *.sqlite
 *.sqlite3
 keep/
+static/

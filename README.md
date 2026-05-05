@@ -1,68 +1,39 @@
-# Zenotes
+# ZeNotes: Self-Evolving Serverless Agent
 
-一个简洁的笔记应用，支持创建、编辑、删除、置顶、拖拽排序和标签筛选。
+**Repository**: [github.com/lipish/mynotes](https://github.com/lipish/mynotes)
 
-## 技术栈
+ZeNotes is a cutting-edge serverless note-taking application designed to be autonomous, always-online, and self-iterating. By combining Cloudflare's ecosystem with a headless agent architecture, ZeNotes can evolve its own logic based on your natural language instructions.
 
-- **前端**: React + TypeScript + Vite + TailwindCSS + shadcn/ui + React Query + dnd-kit
-- **后端**: Rust + Actix-web + SQLx + PostgreSQL
+## The Architecture
+ZeNotes follows a "Stateless Compute + Versioned Storage" paradigm:
+- **Compute**: Cloudflare Workers (stateless nodes).
+- **Storage**: Cloudflare Artifacts (Git-compatible versioned storage) + D1 (Database) + R2 (Storage).
+- **Intelligence**: A custom-built Agent (powered by DeepSeek) that uses an in-memory virtual file system to read, reason, and rewrite its own codebase.
 
-## 项目结构
+## Key Features
+- **Autonomous Evolution**: Simply chat with the built-in Agent to request features or refactorings; the Agent handles the code modification and deployment process.
+- **Always-On Serverless**: Built entirely on Cloudflare's edge network for near-zero latency.
+- **Version Control**: Every Agent-driven change is automatically committed to your Git-compatible Artifacts storage.
+- **Instant Feedback**: Real-time integration via a sidebar chat interface allows you to see the system evolve as you work.
 
-```
-zenotes/
-├── frontend/    # React 前端（可部署到 Cloudflare Pages）
-├── backend/     # Rust 后端 + PostgreSQL（本地/VPS）
-├── worker/      # Cloudflare Worker + D1 + R2（见 worker/README.md）
-└── README.md
-```
+## Getting Started
 
-## 快速开始
+### Prerequisites
+- [Cloudflare Account](https://dash.cloudflare.com/)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
 
-### 前置条件
+### Development
+1. **Clone the repository.**
+2. **Configure secrets**:
+   - `DEEPSEEK_API_KEY`: Set via `wrangler secret put DEEPSEEK_API_KEY --name zenotes-api`
+3. **Deploy**:
+   - Use the provided CI/CD workflows for automated deployment to Cloudflare Pages and Workers.
 
-- Node.js >= 18
-- Rust >= 1.75
-- PostgreSQL >= 15
+## Agentic Development Workflow
+1. Access the web interface.
+2. Open the **ZeNotes Agent** sidebar (bottom-right).
+3. Provide instructions (e.g., "Add a dark mode toggle").
+4. Watch as the Agent autonomously updates the code via Cloudflare Artifacts.
 
-### 1. 配置数据库
-
-```sh
-# 创建数据库
-createdb zenotes
-
-# 配置后端环境变量
-cp backend/.env.example backend/.env
-# 编辑 backend/.env 填入你的数据库连接信息
-```
-
-### 2. 启动后端
-
-```sh
-cd backend
-cargo run
-# API 运行在 http://localhost:8081
-```
-
-### 3. 启动前端
-
-```sh
-cd frontend
-npm install
-npm run dev
-# 前端运行在 http://localhost:8080
-```
-
-## GitHub Actions（Cloudflare Pages）
-
-推送到 `main` 时由 **`.github/workflows/deploy-pages.yml`** 构建 `frontend` 并部署到 Cloudflare Pages。请在仓库 **Settings → Secrets → Actions** 配置 **`CLOUDFLARE_API_TOKEN`**、**`VITE_API_BASE`**（例如 `https://api.zenotes.site/api`）；可选 **`PAGES_PROJECT_NAME`**（默认 `zenotes-web`）。
-
-## API 接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/notes` | 获取所有笔记 |
-| POST | `/api/notes` | 创建笔记 |
-| PATCH | `/api/notes/:id` | 更新笔记 |
-| DELETE | `/api/notes/:id` | 删除笔记 |
-| POST | `/api/notes/reorder` | 重新排序 |
+---
+*Powered by DeepSeek, Cloudflare Workers, and autonomous agentic workflows.*

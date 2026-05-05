@@ -3,6 +3,7 @@
 	"name": "zenotes-api",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-01-01",
+	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		{
 			"pattern": "api.zenotes.site",
@@ -23,6 +24,12 @@
 		{
 			"binding": "NOTES",
 			"bucket_name": "zenotes-bodies"
+		}
+	],
+	"artifacts": [
+		{
+			"binding": "ARTIFACTS",
+			"namespace": "agent-repos"
 		}
 	]
 }

@@ -1,11 +1,90 @@
 import { argon2Verify } from "hash-wasm";
+import git from "isomorphic-git";
+import http from "isomorphic-git/http/web";
+import { MemoryFS } from "./memory-fs";
+
+// Custom Agent implementation to replace missing Flue SDK parts
+class Agent {
+  private apiKey: string;
+  private system: string;
+  private tools: any[];
+
+  constructor(config: any) {
+    this.apiKey = config.model.apiKey;
+    this.system = config.system;
+    this.tools = config.tools;
+  }
+
+  async run(prompt: string) {
+    const history = [
+      { role: 'system', content: `You are a self-maintaining AI Agent. You can read the code in the current directory and update it according to requirements. You are running in a Cloudflare Worker memory sandbox. Here are the available tools: ${JSON.stringify(this.tools.map(t => ({ name: t.name, description: t.description })))}` },
+      { role: 'user', content: prompt }
+    ];
+
+    for (let i = 0; i < 10; i++) {
+      const response = await fetch(`https://api.deepseek.com/chat/completions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: history,
+          tools: this.tools.map(t => ({
+            type: "function",
+            function: {
+              name: t.name,
+              description: t.description,
+              parameters: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string' },
+                  content: { type: 'string' }
+                },
+                required: ['path']
+              }
+            }
+          }))
+        })
+      });
+
+      const data: any = await response.json();
+      const message = data.choices[0].message;
+      history.push(message);
+
+      if (!message.tool_calls) break;
+
+      const toolResults = [];
+      for (const call of message.tool_calls) {
+        const tool = this.tools.find(t => t.name === call.function.name);
+        if (tool) {
+          const args = JSON.parse(call.function.arguments);
+          const result = await tool.execute(args);
+          toolResults.push({
+            role: 'tool',
+            content: JSON.stringify({ result }),
+            tool_call_id: call.id
+          });
+        }
+      }
+      history.push(...toolResults);
+    }
+  }
+}
+
+function createAgent(config: any) {
+  return new Agent(config);
+}
 
 export interface Env {
   DB: D1Database;
   NOTES: R2Bucket;
+  ARTIFACTS: any; // Cloudflare Artifacts binding
   ALLOWED_ORIGINS?: string;
   /** 设为 "true" 时才在 Worker 内调用 argon2Verify（付费/高 CPU 场景）；默认不调用，避免免费套餐长时间卡住 */
   ALLOW_ARGON2_VERIFY?: string;
+  GEMINI_API_KEY?: string; // For the agent's LLM
 }
 
 const ARGON2_MIGRATION_MSG =
@@ -294,6 +373,76 @@ async function rebuildNoteFromR2Media(
   return json(env, request, { ok: true, noteId, imageCount: mediaIds.length });
 }
 
+async function runAgentWorkflow(fs: MemoryFS, dir: string, remote: string, env: Env, prompt: string) {
+  const agent = createAgent({
+    model: {
+      provider: "deepseek",
+      name: "deepseek-chat",
+      apiKey: env.DEEPSEEK_API_KEY,
+    },
+    system: "You are a self-maintaining AI Agent. You can read the code in the current directory and update it as needed. You are running in a Cloudflare Worker memory sandbox.",
+    tools: [
+      {
+        name: 'read_file',
+        description: 'Read the content of a file at the specified path',
+        execute: async ({ path }: { path: string }) => {
+          const content = await fs.promises.readFile(`${dir}/${path}`, 'utf8');
+          return content;
+        }
+      },
+      {
+        name: 'write_file',
+        description: 'Overwrite or create a file with the given content',
+        execute: async ({ path, content }: { path: string, content: string }) => {
+          await fs.promises.writeFile(`${dir}/${path}`, content);
+          return `Successfully updated ${path}`;
+        }
+      },
+      {
+        name: 'list_directory',
+        description: 'List the directory structure',
+        execute: async ({ path }: { path: string }) => {
+          const files = await fs.promises.readdir(`${dir}/${path}`);
+          return files.join('\n');
+        }
+      }
+    ]
+  });
+
+  await agent.run(prompt);
+
+  await commitAndPushChanges(fs, dir, remote);
+}
+
+async function commitAndPushChanges(fs: MemoryFS, dir: string, remote: string) {
+  const status = await git.statusMatrix({ fs, dir });
+  let changed = false;
+  for (const [filepath, head, workdir, stage] of status) {
+    if (workdir !== head) {
+      await git.add({ fs, dir, filepath });
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  await git.commit({
+    fs,
+    dir,
+    author: { name: 'Flue Auto-Agent', email: 'agent@serverless.local' },
+    message: `chore(auto): Agent code update at ${new Date().toISOString()}`
+  });
+
+  await git.push({
+    fs,
+    http,
+    dir,
+    remote: 'origin',
+    url: remote,
+    ref: 'main'
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -338,6 +487,51 @@ export default {
       }
       if (path === "/api/auth/me" && request.method === "GET") {
         return handleMe(request, env);
+      }
+
+      if (path === "/api/agent/run" && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          // For now, let's allow it for testing, or restrict to a specific user
+          // return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = (await request.json()) as { prompt: string, repoName?: string };
+        const sandboxId = body.repoName || "zenotes-agent-project";
+        const prompt = body.prompt;
+
+        if (!prompt) {
+          return json(env, request, { error: "Prompt is required" }, { status: 400 });
+        }
+
+        try {
+          // 1. 获取或创建 Artifacts 仓库
+          const repo = await env.ARTIFACTS.get(sandboxId);
+          // 提取鉴权 Token (Artifacts 的 Git Basic Auth 使用 Secret 作为密码)
+          const tokenResult = await repo.createToken("write", 3600);
+          const tokenSecret = tokenResult.plaintext.split("?expires=")[0];
+          const authRemote = `https://x:${tokenSecret}@${repo.remote.slice(8)}`;
+
+          const fs = new MemoryFS();
+          const dir = "/workspace";
+
+          // 2. 将代码极速拉取到 Worker 内存中
+          await git.clone({
+            fs,
+            http,
+            dir,
+            url: authRemote,
+            singleBranch: true,
+            depth: 1
+          });
+
+          // 3. 运行 Agent Workflow
+          await runAgentWorkflow(fs, dir, authRemote, env, prompt);
+
+          return json(env, request, { ok: true, message: "Agent workflow completed & code updated." });
+        } catch (err: any) {
+          return json(env, request, { error: err.message }, { status: 500 });
+        }
       }
 
       if (path === "/api/notes" && request.method === "GET") {

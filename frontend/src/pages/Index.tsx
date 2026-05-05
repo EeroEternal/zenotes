@@ -3,6 +3,7 @@ import { Header } from '@/components/Header';
 import { NoteInput } from '@/components/NoteInput';
 import { NotesGrid } from '@/components/NotesGrid';
 import { NoteDialog } from '@/components/NoteDialog';
+import { AgentChat } from '@/components/AgentChat';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/note';
 import { toast } from 'sonner';
@@ -221,6 +222,7 @@ export default function Index() {
         onDelete={handleDeleteNote}
         onTogglePin={togglePin}
       />
+      <AgentChat />
     </div>
   );
 }

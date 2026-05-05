@@ -1,21 +1,21 @@
-# 将 PostgreSQL（users / notes）迁到 Cloudflare R2 + D1。
-# 仅手动运行，避免每次 push 触发生产迁移。
+# Migrate PostgreSQL (users / notes) to Cloudflare R2 + D1.
+# Only run manually to avoid triggering production migrations on every push.
 #
-# 前提：
-# - GitHub Actions 能连上该 PostgreSQL（公网 + 安全组放行 Actions IP，或使用 self-hosted runner 在 VPC 内）。
-# - 若库仅内网可达，本 workflow 在 ubuntu-latest 上会失败，须在能进内网的 runner 上执行。
+# Prerequisites:
+# - GitHub Actions must have access to the PostgreSQL database (public access + security group allow-list Actions IPs, or use a self-hosted runner within your VPC).
+# - If the database is internal-only, this workflow will fail on ubuntu-latest; execute on a runner with network access.
 #
-# 在仓库 Settings → Secrets and variables → Actions 中配置：
-# - DATABASE_URL              PostgreSQL 连接串
-# - R2_ACCOUNT_ID             Cloudflare 账户 ID
-# - R2_ACCESS_KEY_ID          R2 API 令牌 Access Key
-# - R2_SECRET_ACCESS_KEY     R2 API 令牌 Secret
-# - CLOUDFLARE_API_TOKEN     需含 D1 写权限（用于 wrangler d1 execute）
-# 可选：
-# - R2_BUCKET                 默认 zenotes-bodies
-# - CLOUDFLARE_ACCOUNT_ID     多账户时可显式指定（多数情况不必）
-# - TARGET_USER_ID            默认 1
-# - D1_DATABASE_NAME          默认 zenotes-db
+# Configure in Repository Settings → Secrets and variables → Actions:
+# - DATABASE_URL              PostgreSQL connection string
+# - R2_ACCOUNT_ID             Cloudflare Account ID
+# - R2_ACCESS_KEY_ID          R2 API Token Access Key
+# - R2_SECRET_ACCESS_KEY      R2 API Token Secret
+# - CLOUDFLARE_API_TOKEN      Must have D1 write permissions (used by wrangler d1 execute)
+# Optional:
+# - R2_BUCKET                 Default: zenotes-bodies
+# - CLOUDFLARE_ACCOUNT_ID     Optional, required for multi-account setups
+# - TARGET_USER_ID            Default: 1
+# - D1_DATABASE_NAME          Default: zenotes-db
 
 name: Migrate Postgres to Cloudflare (D1 + R2)
 

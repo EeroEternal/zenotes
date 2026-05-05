@@ -1,10 +1,10 @@
-# 构建 frontend 部署到 Cloudflare Pages，并部署 Cloudflare Worker（api.zenotes.site）
+# Build frontend and deploy to Cloudflare Pages, and deploy Cloudflare Worker (api.zenotes.site)
 #
-# 仓库 Settings → Secrets → Actions 需配置：
-#   CLOUDFLARE_API_TOKEN   需含 Workers 与 Pages 写权限
-#   VITE_API_BASE          例如 https://api.zenotes.site/api
-# 可选：
-#   PAGES_PROJECT_NAME     默认 mynotes-web（生产域名 zenotes.site）
+# Repository Settings → Secrets → Actions configuration required:
+#   CLOUDFLARE_API_TOKEN   Must have Workers and Pages write permissions
+#   VITE_API_BASE          e.g., https://api.zenotes.site/api
+# Optional:
+#   PAGES_PROJECT_NAME     Default: mynotes-web (production domain zenotes.site)
 
 name: Deploy Cloudflare Pages
 
@@ -34,7 +34,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "::error::请在仓库 Secrets 中设置 CLOUDFLARE_API_TOKEN"
+            echo "::error::CLOUDFLARE_API_TOKEN is not set in repository Secrets"
             exit 1
           fi
           npx wrangler@4 deploy
@@ -64,7 +64,7 @@ jobs:
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
         run: |
           if [ -z "${VITE_API_BASE:-}" ]; then
-            echo "::error::请在仓库 Secrets 中设置 VITE_API_BASE（例如 https://api.zenotes.site/api）"
+            echo "::error::VITE_API_BASE is not set in repository Secrets (e.g., https://api.zenotes.site/api)"
             exit 1
           fi
           npm run build
@@ -75,7 +75,7 @@ jobs:
           PAGES_PROJECT_NAME: ${{ secrets.PAGES_PROJECT_NAME }}
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "::error::请在仓库 Secrets 中设置 CLOUDFLARE_API_TOKEN"
+            echo "::error::CLOUDFLARE_API_TOKEN is not set in repository Secrets"
             exit 1
           fi
           PROJECT="${PAGES_PROJECT_NAME:-mynotes-web}"
