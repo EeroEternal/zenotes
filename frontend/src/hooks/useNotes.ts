@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState } from "react";
 import type { Note, NoteColor } from "@/types/note";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import * as api from "@/lib/api";
@@ -79,7 +79,7 @@ export function useNotes() {
   const notesQuery = useQuery({
     queryKey: ["notes", page, pageSize],
     queryFn: () => api.fetchNotes(page, pageSize),
-    initialData: { notes: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } },
+    placeholderData: keepPreviousData,
   });
 
   const notes = notesQuery.data?.notes ?? [];

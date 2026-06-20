@@ -163,8 +163,12 @@ export default function Index() {
             <Pagination>
               <PaginationContent>
                 <PaginationItem>
-                  <PaginationPrevious 
-                    onClick={() => setPage(Math.max(1, page - 1))}
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage(Math.max(1, page - 1));
+                    }}
                     className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
                   />
                 </PaginationItem>
@@ -185,7 +189,11 @@ export default function Index() {
                   return (
                     <PaginationItem key={pageNum}>
                       <PaginationLink
-                        onClick={() => setPage(pageNum)}
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage(pageNum);
+                        }}
                         isActive={page === pageNum}
                         className="cursor-pointer"
                       >
@@ -196,8 +204,12 @@ export default function Index() {
                 })}
 
                 <PaginationItem>
-                  <PaginationNext 
-                    onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage(Math.min(pagination.totalPages, page + 1));
+                    }}
                     className={page >= pagination.totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
                   />
                 </PaginationItem>

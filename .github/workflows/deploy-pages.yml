@@ -4,7 +4,7 @@
 #   CLOUDFLARE_API_TOKEN   Must have Workers and Pages write permissions
 #   VITE_API_BASE          e.g., https://api.zenotes.site/api
 # Optional:
-#   PAGES_PROJECT_NAME     Default: mynotes-web (production domain zenotes.site)
+#   PAGES_PROJECT_NAME     Default: zenotes (production domain zenotes.site)
 
 name: Deploy Cloudflare Pages
 
@@ -78,5 +78,5 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN is not set in repository Secrets"
             exit 1
           fi
-          PROJECT="${PAGES_PROJECT_NAME:-mynotes-web}"
+          PROJECT="${PAGES_PROJECT_NAME:-zenotes}"
           npx wrangler@4 pages deploy dist --project-name="$PROJECT"
