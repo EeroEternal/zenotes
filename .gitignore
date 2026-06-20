@@ -29,6 +29,10 @@ yarn-error.log*
 .pnpm-debug.log*
 *.log
 
+# playwright
+test-results/
+playwright-report/
+
 # env files
 .env*
 !.env.example

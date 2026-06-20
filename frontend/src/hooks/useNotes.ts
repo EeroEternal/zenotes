@@ -176,6 +176,7 @@ export function useNotes() {
   const addNoteMutation = useMutation({
     mutationFn: (input: { content: string; title?: string; color?: NoteColor; tags?: string[] }) =>
       createLocalNote(input as NoteInput),
+    networkMode: "always",
     onSuccess: () => {
       setPage(1);
       queryClient.invalidateQueries({ queryKey: ["notes"] });
@@ -190,6 +191,7 @@ export function useNotes() {
   const updateNoteMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<Note> }) =>
       updateLocalNote(id, updates as NoteInput),
+    networkMode: "always",
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       if (isOnline) processSyncQueue();
@@ -202,6 +204,7 @@ export function useNotes() {
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => deleteLocalNote(id),
+    networkMode: "always",
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       toast.success("Note deleted");
@@ -214,6 +217,7 @@ export function useNotes() {
   });
 
   const moveMutation = useMutation({
+    networkMode: "always",
     mutationFn: async (vars: {
       activeId: string;
       overId: string;
@@ -250,6 +254,7 @@ export function useNotes() {
 
   const importGoogleKeepMutation = useMutation({
     mutationFn: (files: { raw: string }[]) => api.importGoogleKeep(files),
+    networkMode: "always",
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       // Force re-seed from server
