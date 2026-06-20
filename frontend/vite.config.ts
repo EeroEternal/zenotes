@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
 export default defineConfig({
@@ -27,7 +28,25 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "autoUpdate",
+      manifest: false,
+      devOptions: { enabled: false },
+      workbox: {
+        navigateFallback: "index.html",
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,json}"],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/api\.zenotes\.site\/api\/notes/,
+            handler: "NetworkFirst",
+            options: { cacheName: "api-notes" },
+          },
+        ],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

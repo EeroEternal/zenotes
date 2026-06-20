@@ -7,7 +7,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 const fetchOpts: RequestInit = { credentials: "include" };
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number = AUTH_FETCH_MS): Promise<Response> {
   if (typeof AbortController === "undefined") {
     return fetch(url, init);
   }
@@ -119,37 +119,39 @@ export async function fetchNote(id: string): Promise<Note> {
   return res.json();
 }
 
-export async function createNote(input: {
-  title?: string;
-  content: string;
-  color?: string;
-  tags?: string[];
-}): Promise<Note> {
-  const res = await fetch(`${API_BASE}/notes`, {
+export async function createNote(body: { content: string; title?: string | null; color?: string; tags?: string[]; pinned?: boolean; position?: number }) {
+  return fetchWithTimeout(`${API_BASE}/notes`, {
     ...fetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  await throwIfNotOk(res);
-  return res.json();
+    body: JSON.stringify(body),
+  }).then(throwIfNotOk).then(r => r.json());
 }
 
-export async function updateNote(id: string, updates: Partial<Note>): Promise<Note> {
-  const res = await fetch(`${API_BASE}/notes/${id}`, {
+export async function updateNote(id: string, body: Partial<{ content: string; title: string | null; color: string; tags: string[]; pinned: boolean; position: number }>) {
+  return fetchWithTimeout(`${API_BASE}/notes/${id}`, {
     ...fetchOpts,
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(updates),
-  });
-  await throwIfNotOk(res);
-  return res.json();
+    body: JSON.stringify(body),
+  }).then(throwIfNotOk).then(r => r.json());
 }
 
-export async function deleteNote(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/notes/${id}`, { ...fetchOpts, method: "DELETE" });
-  if (res.ok || res.status === 204) return;
-  await throwIfNotOk(res);
+export async function deleteNote(id: string) {
+  return fetchWithTimeout(`${API_BASE}/notes/${id}`, {
+    ...fetchOpts,
+    method: "DELETE",
+  }).then(throwIfNotOk);
+}
+
+export async function uploadImage(id: string, file: File) {
+  const formData = new FormData();
+  formData.append("image", file);
+  return fetchWithTimeout(`${API_BASE}/notes/${id}/images`, {
+    ...fetchOpts,
+    method: "POST",
+    body: formData,
+  }).then(throwIfNotOk).then(r => r.json());
 }
 
 /** 用 R2 中该笔记已有 `media` 文件重写正文（上传中断、正文未合并时可恢复） */

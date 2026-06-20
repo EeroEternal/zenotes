@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useNotes } from "./useNotes";
+import { db } from "@/offline/db";
 
 function TestComponent() {
   const { notes, pagination, page, setPage } = useNotes();
@@ -37,56 +38,32 @@ function makeNote(id: number) {
     position: id,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    syncStatus: "synced" as const,
+    isDeleted: false,
   };
 }
 
-describe("useNotes pagination", () => {
-  beforeEach(() => {
+describe("useNotes local-first pagination", () => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    await db.notes.clear();
   });
 
-  it("keeps the previous page data while loading a new page", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      const page1Body = {
-        notes: Array.from({ length: 50 }, (_, i) => makeNote(i + 1)),
-        pagination: { page: 1, pageSize: 50, total: 120, totalPages: 3 },
-      };
-      const page2Body = {
-        notes: Array.from({ length: 50 }, (_, i) => makeNote(i + 51)),
-        pagination: { page: 2, pageSize: 50, total: 120, totalPages: 3 },
-      };
-
-      const body = url.includes("page=1") ? page1Body : page2Body;
-      const jsonString = JSON.stringify(body);
-
-      if (!url.includes("page=1")) {
-        // Delay page 2 to simulate network
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
-      return {
-        ok: true,
-        status: 200,
-        json: async () => body,
-        text: async () => jsonString,
-      };
-    });
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it("paginates local notes and updates page on request", async () => {
+    // Seed 120 local notes
+    await db.notes.bulkAdd(Array.from({ length: 120 }, (_, i) => makeNote(i + 1)));
 
     render(<TestComponent />, { wrapper: createWrapper() });
 
     await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("50"));
     expect(screen.getByTestId("total").textContent).toBe("120");
+    expect(screen.getByTestId("page").textContent).toBe("1");
 
     act(() => {
       screen.getByTestId("next").click();
     });
 
-    // Immediately after switching pages we should still see the previous notes
-    // (placeholderData) instead of an empty list.
-    expect(screen.getByTestId("page").textContent).toBe("2");
+    await waitFor(() => expect(screen.getByTestId("page").textContent).toBe("2"));
     expect(screen.getByTestId("count").textContent).toBe("50");
-
-    await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("50"));
   });
 });

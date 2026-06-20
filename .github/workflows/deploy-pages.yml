@@ -10,7 +10,7 @@ name: Deploy Cloudflare Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/android-pwa]
 
 jobs:
   worker:
@@ -72,11 +72,9 @@ jobs:
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          PAGES_PROJECT_NAME: ${{ secrets.PAGES_PROJECT_NAME }}
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN is not set in repository Secrets"
             exit 1
           fi
-          PROJECT="${PAGES_PROJECT_NAME:-zenotes}"
-          npx wrangler@4 pages deploy dist --project-name="$PROJECT"
+          npx wrangler@4 pages deploy dist --project-name=zenotes
