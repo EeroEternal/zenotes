@@ -10,7 +10,7 @@ name: Deploy Cloudflare Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/android-pwa]
 
 jobs:
   worker:
