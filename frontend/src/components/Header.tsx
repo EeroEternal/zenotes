@@ -1,5 +1,5 @@
-import { Download, NotebookPen, Settings, LogOut, User, Search, X } from "lucide-react";
-import { useState } from "react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -55,6 +55,19 @@ export function Header({
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [regEmail, setRegEmail] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const handler = (e: BeforeInstallPromptEvent) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler as EventListener);
+    return () => window.removeEventListener("beforeinstallprompt", handler as EventListener);
+  }, []);
+
+  const isStandalone =
+    typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
 
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -155,6 +168,21 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
+          {installPrompt && !isStandalone && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await installPrompt.prompt();
+                const { outcome } = await installPrompt.userChoice;
+                if (outcome === "accepted") setInstallPrompt(null);
+              }}
+              className="hidden sm:flex items-center gap-2"
+            >
+              <Smartphone className="h-4 w-4" />
+              Install
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center cursor-pointer border border-primary/10 hover:border-primary/30 hover:shadow-sm transition-all outline-none">
