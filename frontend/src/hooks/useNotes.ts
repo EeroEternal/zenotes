@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useEffect } from "react";
 import type { Note, NoteColor } from "@/types/note";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { liveQuery } from "dexie";
 
@@ -88,6 +88,8 @@ export function useNotes() {
   const queryClient = useQueryClient();
   const { isOnline } = useNetworkStatus();
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   // Seed local DB from server on mount / when online
   const seedQuery = useQuery({
@@ -132,17 +134,34 @@ export function useNotes() {
   }, [localNotes]);
 
   const searchedNotes = useMemo(() => {
-    // client-side pagination: all notes (search/filter applied)
-    return allNotes;
+    if (!searchQuery.trim()) return allNotes;
+    const lowerQuery = searchQuery.toLowerCase();
+    return allNotes.filter(
+      (note) =>
+        (note.content ?? "").toLowerCase().includes(lowerQuery) ||
+        note.title?.toLowerCase().includes(lowerQuery) ||
+        (note.tags ?? []).some((t) => t.toLowerCase().includes(lowerQuery)),
+    );
+  }, [allNotes, searchQuery]);
+
+  const filteredNotes = useMemo(() => {
+    if (!selectedTag) return searchedNotes;
+    return searchedNotes.filter((n) => n.tags?.includes(selectedTag));
+  }, [searchedNotes, selectedTag]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    allNotes.forEach((n) => n.tags?.forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allNotes]);
 
-  const total = searchedNotes.length;
+  const total = filteredNotes.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
   const paginatedNotes = useMemo(
-    () => searchedNotes.slice(start, start + PAGE_SIZE),
-    [searchedNotes, start],
+    () => filteredNotes.slice(start, start + PAGE_SIZE),
+    [filteredNotes, start],
   );
 
   const pinnedNotes = useMemo(
@@ -245,6 +264,13 @@ export function useNotes() {
     [addNoteMutation],
   );
 
+  const addNoteAsync = useCallback(
+    async (content: string, title?: string, color: NoteColor = "white", tags: string[] = []) => {
+      return addNoteMutation.mutateAsync({ content, title, color, tags });
+    },
+    [addNoteMutation],
+  );
+
   const updateNote = useCallback(
     (id: string, updates: Partial<Omit<Note, "id">>) => {
       updateNoteMutation.mutate({ id, updates });
@@ -295,6 +321,7 @@ export function useNotes() {
     pinnedNotes,
     unpinnedNotes,
     addNote,
+    addNoteAsync,
     updateNote,
     deleteNote,
     togglePin,
@@ -314,6 +341,11 @@ export function useNotes() {
     setPage,
     pageSize: PAGE_SIZE,
     setPageSize: () => {}, // no-op; page size fixed for simplicity
+    searchQuery,
+    setSearchQuery,
+    selectedTag,
+    setSelectedTag,
+    allTags,
   };
 }
 
