@@ -131,7 +131,7 @@ export async function createNote(body: { content: string; title?: string | null;
 export async function updateNote(id: string, body: Partial<{ content: string; title: string | null; color: string; tags: string[]; pinned: boolean; position: number }>) {
   return fetchWithTimeout(`${API_BASE}/notes/${id}`, {
     ...fetchOpts,
-    method: "PUT",
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   }).then(throwIfNotOk).then(r => r.json());
