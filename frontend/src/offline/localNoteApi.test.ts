@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "./db";
-import { createLocalNote, updateLocalNote, deleteLocalNote, getLocalNotes } from "./localNoteApi";
+import { createLocalNote, updateLocalNote, deleteLocalNote, getLocalNotes, getLocalNote } from "./localNoteApi";
 
 describe("localNoteApi", () => {
   beforeEach(async () => {
@@ -34,5 +34,22 @@ describe("localNoteApi", () => {
     expect(got?.isDeleted).toBe(true);
     const queue = await db.syncQueue.toArray();
     expect(queue[0].type).toBe("DELETE_NOTE");
+  });
+
+  it("getLocalNotes excludes deleted notes and sorts by updatedAt descending", async () => {
+    const older = await createLocalNote({ content: "older" });
+    const newer = await createLocalNote({ content: "newer" });
+    await deleteLocalNote(older.id);
+
+    const notes = await getLocalNotes();
+    expect(notes.map((n) => n.content)).toEqual(["newer"]);
+    expect(notes[0].id).toBe(newer.id);
+  });
+
+  it("getLocalNote returns a note by id", async () => {
+    const created = await createLocalNote({ content: "find me" });
+    const found = await getLocalNote(created.id);
+    expect(found?.id).toBe(created.id);
+    expect(found?.content).toBe("find me");
   });
 });

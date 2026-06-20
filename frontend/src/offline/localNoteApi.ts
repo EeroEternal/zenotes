@@ -3,7 +3,7 @@ import { generateId } from "./id";
 
 export type NoteInput = Partial<Omit<LocalNote, "id" | "syncStatus" | "isDeleted" | "createdAt" | "updatedAt">>;
 
-export function nowIso() {
+export function nowIso(): string {
   return new Date().toISOString();
 }
 
@@ -34,7 +34,7 @@ export async function createLocalNote(input: NoteInput = {}) {
   return note;
 }
 
-export async function updateLocalNote(id: string, input: NoteInput & { content?: string }) {
+export async function updateLocalNote(id: string, input: NoteInput) {
   const existing = await db.notes.get(id);
   if (!existing) throw new Error(`Note not found: ${id}`);
   const updates: Partial<LocalNote> = {
@@ -66,7 +66,8 @@ export async function deleteLocalNote(id: string) {
 }
 
 export async function getLocalNotes() {
-  return db.notes.where("isDeleted").equals(0).sortBy("updatedAt");
+  const notes = await db.notes.filter((n) => !n.isDeleted).toArray();
+  return notes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export async function getLocalNote(id: string) {
