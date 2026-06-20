@@ -27,7 +27,7 @@ export async function createLocalNote(input: NoteInput = {}) {
   await db.syncQueue.add({
     type: "CREATE_NOTE",
     entityId: note.id,
-    payload: note,
+    payload: input,
     retries: 0,
     createdAt: Date.now(),
   });
