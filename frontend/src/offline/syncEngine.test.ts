@@ -12,6 +12,7 @@ describe("syncEngine", () => {
 
   it("creates a note on the server and marks it synced", async () => {
     const note = await createLocalNote({ content: "sync me" });
+    vi.spyOn(api, "fetchAuthMe").mockResolvedValue({ id: 1, username: "test", email: "test@test.com" });
     const createSpy = vi.spyOn(api, "createNote").mockResolvedValue({ ...note, syncStatus: "synced" } as any);
 
     await processSyncQueue();

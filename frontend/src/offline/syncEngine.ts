@@ -6,7 +6,24 @@ import { markNoteSynced, removeLocalNote } from "./localNoteApi";
 
 const MAX_RETRIES = 3;
 
+function syncToastLabel(type: string): string {
+  switch (type) {
+    case "CREATE_NOTE": return "Save note to cloud";
+    case "UPDATE_NOTE": return "Update note in cloud";
+    case "DELETE_NOTE": return "Delete note from cloud";
+    default: return type;
+  }
+}
+
 export async function processSyncQueue() {
+  // Skip sync entirely if the user is not signed in (avoids 401 spam)
+  try {
+    const user = await api.fetchAuthMe();
+    if (!user) return;
+  } catch {
+    return;
+  }
+
   const pending = await db.syncQueue.orderBy("createdAt").toArray();
   for (const op of pending) {
     if (!op.id) continue;
@@ -17,7 +34,7 @@ export async function processSyncQueue() {
     } catch (err) {
       console.error("[SyncEngine] failed", op.type, op.entityId, err);
       if (op.retries + 1 >= MAX_RETRIES) {
-        toast.error(`同步失败: ${op.type}`);
+        toast.error(`Sync failed: ${syncToastLabel(op.type)}`);
       }
     }
   }

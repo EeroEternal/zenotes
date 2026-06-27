@@ -59,18 +59,24 @@ export function ResponsiveLayout() {
         onSearchChange={setSearchQuery}
       />
       <main className="flex-1 flex overflow-hidden">
+        {/* Sidebar: shown on mobile when no note selected, always on desktop */}
         {(!isNoteRoute || isTablet) && (
           <div
             className={`${
-              isTablet ? "w-80 lg:w-96 border-r border-border/50" : "w-full"
+              isTablet && !isNoteRoute
+                ? "w-full"
+                : isTablet
+                  ? "w-80 lg:w-96 border-r border-border/50"
+                  : "w-full"
             } h-full overflow-auto`}
           >
             <NoteList />
           </div>
         )}
-        {(isNoteRoute || isTablet) && (
+        {/* Right panel: only shown when a note is selected (all screen sizes) */}
+        {isNoteRoute && (
           <div className="flex-1 h-full overflow-auto bg-muted/30">
-            {isNoteRoute ? <Outlet /> : <SelectNotePlaceholder />}
+            <Outlet />
           </div>
         )}
       </main>
