@@ -28,7 +28,8 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
     case "CREATE_NOTE": {
       const serverNote = await api.createNote(op.payload as any);
       await markNoteSynced(op.entityId, serverNote as any);
-      await syncImagesForNote(op.entityId);
+      const finalId = serverNote?.id || op.entityId;
+      await syncImagesForNote(finalId);
       break;
     }
     case "UPDATE_NOTE": {

@@ -2,11 +2,21 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useNotes } from "@/hooks/useNotes";
 import { NoteDialog } from "./NoteDialog";
 import { toast } from "sonner";
+import { idRemap } from "@/offline/idRemap";
+import { useEffect } from "react";
 
 export function NoteEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { notes, updateNote, deleteNote, togglePin } = useNotes();
+
+  // Handle URL redirection if the currently edited note has been remapped
+  useEffect(() => {
+    if (id && idRemap.has(id)) {
+      const newId = idRemap.get(id);
+      navigate(`/note/${newId}`, { replace: true });
+    }
+  }, [id, navigate]);
 
   const note = id ? notes.find((n) => n.id === id) ?? null : null;
 

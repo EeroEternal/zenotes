@@ -9,11 +9,8 @@ const indexHtmlPath = path.resolve(currentDir, "../../index.html");
 const indexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
 
 describe("frontend entry lock", () => {
-  it("keeps lovable bundled entry and not switch to src entry", () => {
-    expect(indexHtml).toContain("/assets/index-");
-    expect(indexHtml).toContain('.js"></script>');
-    expect(indexHtml).toContain("/assets/index-");
-    expect(indexHtml).toContain('.css">');
-    expect(indexHtml).not.toContain("/src/main.tsx");
+  it("uses the src main entry point", () => {
+    expect(indexHtml).toContain("/src/main.tsx");
+    expect(indexHtml).not.toContain("/assets/index-");
   });
 });

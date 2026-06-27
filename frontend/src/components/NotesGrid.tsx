@@ -96,7 +96,7 @@ export function NotesGrid({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 pb-8">
+    <div className="max-w-7xl mx-auto px-4 pb-8 masonry-container">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

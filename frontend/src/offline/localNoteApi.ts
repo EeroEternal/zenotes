@@ -1,5 +1,6 @@
 import { db, type LocalNote } from "./db";
 import { generateId } from "./id";
+import { idRemap } from "./idRemap";
 
 export type NoteInput = Partial<Omit<LocalNote, "id" | "syncStatus" | "isDeleted" | "createdAt" | "updatedAt">>;
 
@@ -75,7 +76,54 @@ export async function getLocalNote(id: string) {
 }
 
 export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>) {
-  await db.notes.update(id, { syncStatus: "synced", ...serverNote });
+  await db.transaction("rw", [db.notes, db.syncQueue, db.images], async () => {
+    const existing = await db.notes.get(id);
+    if (!existing) return;
+
+    if (serverNote && serverNote.id && serverNote.id !== id) {
+      const serverId = serverNote.id;
+      idRemap.set(id, serverId);
+
+      // 1. Delete the old note
+      await db.notes.delete(id);
+
+      // 2. Add the new note with the server ID and syncStatus: "synced"
+      const newNote: LocalNote = {
+        ...existing,
+        ...serverNote,
+        id: serverId,
+        syncStatus: "synced",
+      };
+      await db.notes.add(newNote);
+
+      // 3. Update any pending syncQueue operations targeting the old note ID
+      const pendingOps = await db.syncQueue.where("entityId").equals(id).toArray();
+      for (const op of pendingOps) {
+        if (op.id) {
+          const updatedPayload = { ...op.payload };
+          if (updatedPayload.id === id) {
+            updatedPayload.id = serverId;
+          }
+          await db.syncQueue.update(op.id, {
+            entityId: serverId,
+            payload: updatedPayload,
+          });
+        }
+      }
+
+      // 4. Update any local images targeting the old note ID
+      const localImages = await db.images.where("noteId").equals(id).toArray();
+      for (const img of localImages) {
+        await db.images.update(img.id, { noteId: serverId });
+      }
+    } else {
+      // Just update the note as synced
+      await db.notes.update(id, {
+        syncStatus: "synced",
+        ...serverNote,
+      });
+    }
+  });
 }
 
 export async function removeLocalNote(id: string) {
