@@ -6,6 +6,8 @@ import { markNoteSynced, removeLocalNote } from "./localNoteApi";
 
 const MAX_RETRIES = 3;
 
+let _syncing = false;
+
 function syncToastLabel(type: string): string {
   switch (type) {
     case "CREATE_NOTE": return "Save note to cloud";
@@ -16,27 +18,34 @@ function syncToastLabel(type: string): string {
 }
 
 export async function processSyncQueue() {
-  // Skip sync entirely if the user is not signed in (avoids 401 spam)
+  // Prevent concurrent sync runs (can be triggered by onSuccess + useEffect simultaneously)
+  if (_syncing) return;
+  _syncing = true;
   try {
-    const user = await api.fetchAuthMe();
-    if (!user) return;
-  } catch {
-    return;
-  }
-
-  const pending = await db.syncQueue.orderBy("createdAt").toArray();
-  for (const op of pending) {
-    if (!op.id) continue;
+    // Skip sync entirely if the user is not signed in (avoids 401 spam)
     try {
-      await db.syncQueue.update(op.id, { retries: op.retries + 1 });
-      await executeOperation(op);
-      await db.syncQueue.delete(op.id);
-    } catch (err) {
-      console.error("[SyncEngine] failed", op.type, op.entityId, err);
-      if (op.retries + 1 >= MAX_RETRIES) {
-        toast.error(`Sync failed: ${syncToastLabel(op.type)}`);
+      const user = await api.fetchAuthMe();
+      if (!user) return;
+    } catch {
+      return;
+    }
+
+    const pending = await db.syncQueue.orderBy("createdAt").toArray();
+    for (const op of pending) {
+      if (!op.id) continue;
+      try {
+        await db.syncQueue.update(op.id, { retries: op.retries + 1 });
+        await executeOperation(op);
+        await db.syncQueue.delete(op.id);
+      } catch (err) {
+        console.error("[SyncEngine] failed", op.type, op.entityId, err);
+        if (op.retries + 1 >= MAX_RETRIES) {
+          toast.error(`Sync failed: ${syncToastLabel(op.type)}`);
+        }
       }
     }
+  } finally {
+    _syncing = false;
   }
 }
 

@@ -1,24 +1,11 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Header } from "./Header";
 import { NoteList } from "./NoteList";
-import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNotes } from "@/hooks/useNotes";
 import { toast } from "sonner";
 
-function SelectNotePlaceholder() {
-  return (
-    <div className="flex h-full items-center justify-center text-muted-foreground">
-      <div className="text-center">
-        <p className="text-lg font-medium">Select a note</p>
-        <p className="text-sm">Choose a note from the list to view or edit</p>
-      </div>
-    </div>
-  );
-}
-
 export function ResponsiveLayout() {
-  const isTablet = useMediaQuery("(min-width: 768px)");
   const { pathname } = useLocation();
   const isNoteRoute = pathname.startsWith("/note/");
   const keepInputRef = useRef<HTMLInputElement>(null);
@@ -59,23 +46,15 @@ export function ResponsiveLayout() {
         onSearchChange={setSearchQuery}
       />
       <main className="flex-1 flex overflow-hidden">
-        {/* Sidebar: shown on mobile when no note selected, always on desktop */}
-        {(!isNoteRoute || isTablet) && (
-          <div
-            className={`${
-              isTablet && !isNoteRoute
-                ? "w-full"
-                : isTablet
-                  ? "w-80 lg:w-96 border-r border-border/50"
-                  : "w-full"
-            } h-full overflow-auto`}
-          >
+        {/* Note list: hidden when a note is selected (dialog takes full screen) */}
+        {!isNoteRoute && (
+          <div className="w-full h-full overflow-auto">
             <NoteList />
           </div>
         )}
-        {/* Right panel: only shown when a note is selected (all screen sizes) */}
+        {/* Note editor dialog: full-screen when a note is selected */}
         {isNoteRoute && (
-          <div className="flex-1 h-full overflow-auto bg-muted/30">
+          <div className="w-full h-full overflow-auto bg-muted/30">
             <Outlet />
           </div>
         )}
