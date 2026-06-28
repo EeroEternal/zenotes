@@ -1,4 +1,3 @@
-import { toast } from "sonner";
 import { db } from "./db";
 import * as api from "../lib/api";
 import { ApiError } from "../lib/api-error";
@@ -10,7 +9,6 @@ const MAX_RETRIES = 3;
 let _syncing = false;
 
 export async function processSyncQueue() {
-  // Prevent concurrent sync runs (can be triggered by onSuccess + useEffect simultaneously)
   if (_syncing) return;
   _syncing = true;
   try {
@@ -22,31 +20,42 @@ export async function processSyncQueue() {
       return;
     }
 
-    const pending = await db.syncQueue.orderBy("createdAt").toArray();
-    for (const op of pending) {
-      if (!op.id) continue;
+    // Keep processing the queue in a loop until empty, re-reading each iteration
+    // so that items added during execution (e.g. UPDATE_NOTE from image sync) are
+    // picked up without needing a recursive call (which would deadlock with the mutex).
+    while (true) {
+      const pending = await db.syncQueue.orderBy("createdAt").toArray();
+      if (pending.length === 0) break;
 
-      // Skip stale CREATE_NOTE operations where the local note is already gone
-      if (op.type === "CREATE_NOTE") {
-        const localNote = await db.notes.get(op.entityId);
-        if (!localNote) {
+      let processed = 0;
+      for (const op of pending) {
+        if (!op.id) continue;
+
+        if (op.type === "CREATE_NOTE") {
+          const localNote = await db.notes.get(op.entityId);
+          if (!localNote) {
+            await db.syncQueue.delete(op.id);
+            processed++;
+            continue;
+          }
+        }
+
+        try {
+          await executeOperation(op);
           await db.syncQueue.delete(op.id);
-          continue;
+          processed++;
+        } catch (err) {
+          const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
+          console.error("[SyncEngine] failed", op.type, op.entityId, msg);
+          if (op.retries >= MAX_RETRIES) {
+            // Silent: don't spam the user, they can see the note locally
+          } else {
+            await db.syncQueue.update(op.id, { retries: op.retries + 1 });
+          }
         }
       }
 
-      try {
-        await executeOperation(op);
-        await db.syncQueue.delete(op.id);
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
-        console.error("[SyncEngine] failed", op.type, op.entityId, msg);
-        if (op.retries >= MAX_RETRIES) {
-          toast.error(`Sync failed: ${msg}`);
-        } else {
-          await db.syncQueue.update(op.id, { retries: op.retries + 1 });
-        }
-      }
+      if (processed === 0) break; // nothing worked, avoid infinite loop
     }
   } finally {
     _syncing = false;
@@ -121,6 +130,6 @@ async function syncImagesForNote(noteId: string) {
       retries: 0,
       createdAt: Date.now(),
     });
-    await processSyncQueue(); // recursively sync the content update
+    // UPDATE_NOTE will be picked up by the outer while loop in processSyncQueue
   }
 }
