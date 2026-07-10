@@ -19,6 +19,7 @@ describe("syncEngine", () => {
     await processSyncQueue();
 
     expect(createSpy).toHaveBeenCalledWith({ id: note.id, content: "sync me" });
+    expect(createSpy).toHaveBeenCalledTimes(1);
     const queue = await db.syncQueue.toArray();
     expect(queue.length).toBe(0);
     const synced = await db.notes.get(note.id);
@@ -55,5 +56,19 @@ describe("syncEngine", () => {
     expect(createSpy).not.toHaveBeenCalled();
     const queue = await db.syncQueue.toArray();
     expect(queue.length).toBe(0);
+  });
+
+  it("does not create twice when the note is already syncing", async () => {
+    const note = await createLocalNote({ content: "in flight" });
+    await db.notes.update(note.id, { syncStatus: "syncing" });
+
+    vi.spyOn(api, "fetchAuthMe").mockResolvedValue({ id: 1, username: "test", email: "test@test.com" });
+    const createSpy = vi.spyOn(api, "createNote");
+
+    await processSyncQueue();
+
+    expect(createSpy).not.toHaveBeenCalled();
+    const queue = await db.syncQueue.toArray();
+    expect(queue.length).toBe(1);
   });
 });

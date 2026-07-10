@@ -27,8 +27,17 @@ export async function processSyncQueue() {
   }
 }
 
+async function claimCreateNote(entityId: string): Promise<boolean> {
+  return db.transaction("rw", db.notes, async () => {
+    const note = await db.notes.get(entityId);
+    if (!note || note.isDeleted) return false;
+    if (note.syncStatus === "synced" || note.syncStatus === "syncing") return false;
+    await db.notes.update(entityId, { syncStatus: "syncing" });
+    return true;
+  });
+}
+
 async function processSyncQueueInner() {
-  // Skip sync entirely if the user is not signed in (avoids 401 spam)
   try {
     const user = await api.fetchAuthMe();
     if (!user) return;
@@ -36,9 +45,6 @@ async function processSyncQueueInner() {
     return;
   }
 
-  // Keep processing the queue in a loop until empty, re-reading each iteration
-  // so that items added during execution (e.g. UPDATE_NOTE from image sync) are
-  // picked up without needing a recursive call (which would deadlock with the mutex).
   while (true) {
     const pending = await db.syncQueue.orderBy("createdAt").toArray();
     if (pending.length === 0) break;
@@ -55,7 +61,7 @@ async function processSyncQueueInner() {
 
       if (op.type === "CREATE_NOTE") {
         const localNote = await db.notes.get(op.entityId);
-        if (!localNote) {
+        if (!localNote || localNote.isDeleted) {
           await db.syncQueue.delete(op.id);
           processed++;
           continue;
@@ -63,6 +69,9 @@ async function processSyncQueueInner() {
         if (localNote.syncStatus === "synced") {
           await db.syncQueue.delete(op.id);
           processed++;
+          continue;
+        }
+        if (localNote.syncStatus === "syncing") {
           continue;
         }
       }
@@ -74,17 +83,26 @@ async function processSyncQueueInner() {
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
         console.error("[SyncEngine] failed", op.type, op.entityId, msg);
+        if (op.type === "CREATE_NOTE") {
+          const note = await db.notes.get(op.entityId);
+          if (note?.syncStatus === "syncing") {
+            await db.notes.update(op.entityId, { syncStatus: "pending" });
+          }
+        }
         await db.syncQueue.update(op.id, { retries: op.retries + 1 });
       }
     }
 
-    if (processed === 0) break; // nothing worked, avoid infinite loop
+    if (processed === 0) break;
   }
 }
 
 async function executeOperation(op: { type: string; entityId: string; payload: Record<string, unknown> }) {
   switch (op.type) {
     case "CREATE_NOTE": {
+      const claimed = await claimCreateNote(op.entityId);
+      if (!claimed) return;
+
       const p = op.payload ?? {};
       const createBody: Record<string, unknown> = { id: op.entityId };
       if (typeof p.content === "string") createBody.content = p.content;
@@ -92,10 +110,18 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
       if (typeof p.color === "string") createBody.color = p.color;
       if (Array.isArray(p.tags)) createBody.tags = p.tags;
 
-      const serverNote = await api.createNote(createBody as any);
-      await markNoteSynced(op.entityId, serverNote as any);
-      const finalId = serverNote?.id || op.entityId;
-      await syncImagesForNote(finalId);
+      try {
+        const serverNote = await api.createNote(createBody as any);
+        await markNoteSynced(op.entityId, serverNote as any);
+        const finalId = serverNote?.id || op.entityId;
+        await syncImagesForNote(finalId);
+      } catch (err) {
+        const note = await db.notes.get(op.entityId);
+        if (note?.syncStatus === "syncing") {
+          await db.notes.update(op.entityId, { syncStatus: "pending" });
+        }
+        throw err;
+      }
       break;
     }
     case "UPDATE_NOTE": {
@@ -118,7 +144,6 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
       break;
     }
     case "UPLOAD_IMAGE": {
-      // handled inside syncImagesForNote after note exists
       break;
     }
     default:
@@ -150,6 +175,5 @@ async function syncImagesForNote(noteId: string) {
       retries: 0,
       createdAt: Date.now(),
     });
-    // UPDATE_NOTE will be picked up by the outer while loop in processSyncQueue
   }
 }

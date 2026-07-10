@@ -11,11 +11,12 @@ import { cn } from '@/lib/utils';
 
 interface NoteInputProps {
   onAddNote: (content: string, title?: string, color?: NoteColor, tags?: string[]) => void;
+  isSubmitting?: boolean;
   compact?: boolean;
   className?: string;
 }
 
-export function NoteInput({ onAddNote, compact = false, className }: NoteInputProps) {
+export function NoteInput({ onAddNote, isSubmitting = false, compact = false, className }: NoteInputProps) {
   const queryClient = useQueryClient();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -27,8 +28,12 @@ export function NoteInput({ onAddNote, compact = false, className }: NoteInputPr
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
 
+  const submittingRef = useRef(false);
+
   const handleSubmit = () => {
+    if (submittingRef.current || isSubmitting) return;
     if (content.trim() || title.trim()) {
+      submittingRef.current = true;
       const tags = tagsText
         .split(',')
         .map((t) => t.trim())
@@ -39,6 +44,9 @@ export function NoteInput({ onAddNote, compact = false, className }: NoteInputPr
       setContent('');
       setTagsText('');
       setIsExpanded(false);
+      queueMicrotask(() => {
+        submittingRef.current = false;
+      });
     }
   };
 
@@ -225,8 +233,10 @@ export function NoteInput({ onAddNote, compact = false, className }: NoteInputPr
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleSubmit}
-                  className="px-6 py-2 text-sm font-medium rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-sm"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 text-sm font-medium rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-sm disabled:opacity-50 disabled:pointer-events-none"
                 >
                   Done
                 </button>

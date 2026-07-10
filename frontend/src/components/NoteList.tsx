@@ -28,6 +28,7 @@ export function NoteList() {
     pagination,
     page,
     setPage,
+    isAddingNote,
   } = useNotes();
 
   const handleNoteClick = (note: Note) => {
@@ -37,7 +38,7 @@ export function NoteList() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       <div className="max-w-2xl mx-auto">
-        <NoteInput onAddNote={addNote} />
+        <NoteInput onAddNote={addNote} isSubmitting={isAddingNote} />
       </div>
 
       {allTags.length > 0 && (

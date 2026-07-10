@@ -7,7 +7,7 @@ import { liveQuery } from "dexie";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
 import { useNetworkStatus } from "@/offline/network";
-import { processSyncQueue } from "@/offline/syncEngine";
+import { requestSync } from "@/offline/syncScheduler";
 import {
   createLocalNote,
   updateLocalNote,
@@ -114,12 +114,6 @@ export function useNotes() {
     staleTime: 5 * 60 * 1000,
   });
 
-  useEffect(() => {
-    if (isOnline) {
-      processSyncQueue();
-    }
-  }, [isOnline]);
-
   // Live local notes
   const [localNotes, setLocalNotes] = useState<Note[]>([]);
   useEffect(() => {
@@ -180,7 +174,7 @@ export function useNotes() {
     onSuccess: () => {
       setPage(1);
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      if (isOnline) processSyncQueue();
+      if (isOnline) requestSync();
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "保存失败，请稍后重试";
@@ -194,7 +188,7 @@ export function useNotes() {
     networkMode: "always",
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      if (isOnline) processSyncQueue();
+      if (isOnline) requestSync();
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "更新失败，请稍后重试";
@@ -208,7 +202,7 @@ export function useNotes() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       toast.success("Note deleted");
-      if (isOnline) processSyncQueue();
+      if (isOnline) requestSync();
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "删除失败，请稍后重试";
@@ -244,7 +238,7 @@ export function useNotes() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      if (isOnline) processSyncQueue();
+      if (isOnline) requestSync();
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "Reorder failed";
@@ -264,6 +258,7 @@ export function useNotes() {
 
   const addNote = useCallback(
     (content: string, title?: string, color: NoteColor = "white", tags: string[] = []) => {
+      if (addNoteMutation.isPending) return;
       addNoteMutation.mutate({ content, title, color, tags });
     },
     [addNoteMutation],
@@ -334,6 +329,7 @@ export function useNotes() {
     importGoogleKeep,
     searchNotes,
     isImportingKeep: importGoogleKeepMutation.isPending,
+    isAddingNote: addNoteMutation.isPending,
     isLoading: seedQuery.isLoading,
     isError: seedQuery.isError,
     pagination: {
