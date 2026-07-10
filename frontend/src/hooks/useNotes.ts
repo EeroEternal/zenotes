@@ -17,7 +17,7 @@ import {
   type NoteInput,
 } from "@/offline/localNoteApi";
 import { db } from "@/offline/db";
-import { mergeServerNotesIntoLocal } from "@/offline/notesSeed";
+import { pullServerNotes } from "@/offline/notesSeed";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
@@ -96,9 +96,15 @@ export function useNotes() {
   const seedQuery = useQuery({
     queryKey: ["notes", "seed"],
     queryFn: async () => {
-      const data = await api.fetchNotes(1, 1000);
-      await mergeServerNotesIntoLocal(data.notes);
-      return data;
+      try {
+        return await pullServerNotes();
+      } catch (err) {
+        console.error("[notes seed]", err);
+        return {
+          notes: [],
+          pagination: { page: 1, pageSize: 1000, total: 0, totalPages: 0 },
+        };
+      }
     },
     enabled: isOnline,
     staleTime: 5 * 60 * 1000,
@@ -107,9 +113,10 @@ export function useNotes() {
   // Live local notes
   const [localNotes, setLocalNotes] = useState<Note[]>([]);
   useEffect(() => {
-    const subscription = liveQuery(() => getLocalNotes()).subscribe((notes) => {
-      setLocalNotes(notes as Note[]);
-    });
+    const subscription = liveQuery(() => getLocalNotes()).subscribe(
+      (notes) => setLocalNotes(notes as Note[]),
+      (err) => console.error("[notes liveQuery]", err),
+    );
     return () => subscription.unsubscribe();
   }, []);
 

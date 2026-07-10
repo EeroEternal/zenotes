@@ -84,17 +84,25 @@ export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>
       const serverId = serverNote.id;
       idRemap.set(id, serverId);
 
-      // 1. Delete the old note
+      const existingAtServerId = await db.notes.get(serverId);
+
+      // Drop the provisional local row (may differ from server id after older clients).
       await db.notes.delete(id);
 
-      // 2. Add the new note with the server ID and syncStatus: "synced"
-      const newNote: LocalNote = {
+      const merged: LocalNote = {
+        ...(existingAtServerId ?? existing),
         ...existing,
         ...serverNote,
         id: serverId,
         syncStatus: "synced",
+        isDeleted: false,
       };
-      await db.notes.add(newNote);
+
+      if (existingAtServerId) {
+        await db.notes.update(serverId, merged);
+      } else {
+        await db.notes.add(merged);
+      }
 
       // 3. Update any pending syncQueue operations targeting the old note ID
       const pendingOps = await db.syncQueue.where("entityId").equals(id).toArray();
@@ -121,6 +129,7 @@ export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>
       await db.notes.update(id, {
         ...serverNote,
         syncStatus: "synced",
+        isDeleted: false,
       });
     }
   });

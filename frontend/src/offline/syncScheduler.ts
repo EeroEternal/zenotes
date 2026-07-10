@@ -7,14 +7,9 @@ export function requestSync() {
   void processSyncQueue();
 }
 
-/** Mount once at app startup to sync when coming online. */
+/** Mount once at app startup to sync when coming back online. */
 export function startSyncScheduler() {
   if (started || typeof window === "undefined") return;
   started = true;
-
-  const onOnline = () => requestSync();
-  window.addEventListener("online", onOnline);
-  if (navigator.onLine) {
-    requestSync();
-  }
+  window.addEventListener("online", () => requestSync());
 }
