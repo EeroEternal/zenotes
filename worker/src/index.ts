@@ -289,6 +289,12 @@ function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
+/** Accept UUID or legacy client ids (url-safe, 8–64 chars). */
+function isClientNoteId(s: string): boolean {
+  if (isUuid(s)) return true;
+  return /^[A-Za-z0-9_-]{8,64}$/.test(s);
+}
+
 /** URL 路径里的一段，可能是 percent-encoding；与 D1 里存的一致才能命中 */
 function pathIdSegment(s: string): string {
   try {
@@ -823,7 +829,7 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
   const color = body.color ?? "white";
   const tagsJson = JSON.stringify(body.tags ?? []);
 
-  const clientId = typeof body.id === "string" && isUuid(body.id) ? body.id : null;
+  const clientId = typeof body.id === "string" && isClientNoteId(body.id) ? body.id : null;
 
   if (clientId) {
     const existing = await env.DB.prepare(

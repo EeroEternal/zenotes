@@ -119,10 +119,18 @@ export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>
     } else {
       // Just update the note as synced
       await db.notes.update(id, {
-        syncStatus: "synced",
         ...serverNote,
+        syncStatus: "synced",
       });
     }
+  });
+}
+
+export async function tombstoneNote(id: string) {
+  await db.notes.update(id, {
+    isDeleted: true,
+    syncStatus: "synced",
+    updatedAt: nowIso(),
   });
 }
 

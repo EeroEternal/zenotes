@@ -17,6 +17,7 @@ import {
   type NoteInput,
 } from "@/offline/localNoteApi";
 import { db } from "@/offline/db";
+import { mergeServerNotesIntoLocal } from "@/offline/notesSeed";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
@@ -96,18 +97,7 @@ export function useNotes() {
     queryKey: ["notes", "seed"],
     queryFn: async () => {
       const data = await api.fetchNotes(1, 1000);
-      await db.transaction("rw", db.notes, async () => {
-        for (const note of data.notes) {
-          const exists = await db.notes.get(note.id);
-          if (!exists) {
-            await db.notes.add({
-              ...note,
-              syncStatus: "synced",
-              isDeleted: false,
-            } as any);
-          }
-        }
-      });
+      await mergeServerNotesIntoLocal(data.notes);
       return data;
     },
     enabled: isOnline,

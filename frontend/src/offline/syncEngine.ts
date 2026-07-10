@@ -2,7 +2,7 @@ import { db } from "./db";
 import * as api from "../lib/api";
 import { ApiError } from "../lib/api-error";
 import { getPendingImagesForNote, markImageSynced, replaceLocalImageUrls } from "./imageCache";
-import { markNoteSynced, removeLocalNote } from "./localNoteApi";
+import { markNoteSynced, tombstoneNote } from "./localNoteApi";
 
 const MAX_RETRIES = 3;
 const SYNC_LOCK_NAME = "zenotes-sync";
@@ -45,6 +45,9 @@ async function processSyncQueueInner() {
     return;
   }
 
+  // Recover from a crash mid-sync (note left as "syncing").
+  await db.notes.where("syncStatus").equals("syncing").modify({ syncStatus: "pending" });
+
   while (true) {
     const pending = await db.syncQueue.orderBy("createdAt").toArray();
     if (pending.length === 0) break;
@@ -77,7 +80,8 @@ async function processSyncQueueInner() {
       }
 
       try {
-        await executeOperation(op);
+        const completed = await executeOperation(op);
+        if (!completed) continue;
         await db.syncQueue.delete(op.id);
         processed++;
       } catch (err) {
@@ -97,11 +101,11 @@ async function processSyncQueueInner() {
   }
 }
 
-async function executeOperation(op: { type: string; entityId: string; payload: Record<string, unknown> }) {
+async function executeOperation(op: { type: string; entityId: string; payload: Record<string, unknown> }): Promise<boolean> {
   switch (op.type) {
     case "CREATE_NOTE": {
       const claimed = await claimCreateNote(op.entityId);
-      if (!claimed) return;
+      if (!claimed) return false;
 
       const p = op.payload ?? {};
       const createBody: Record<string, unknown> = { id: op.entityId };
@@ -140,7 +144,7 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
     }
     case "DELETE_NOTE": {
       await api.deleteNote(op.entityId);
-      await removeLocalNote(op.entityId);
+      await tombstoneNote(op.entityId);
       break;
     }
     case "UPLOAD_IMAGE": {
@@ -149,6 +153,7 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
     default:
       console.warn("[SyncEngine] unknown op", op);
   }
+  return true;
 }
 
 async function syncImagesForNote(noteId: string) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db } from "./db";
-import { createLocalNote } from "./localNoteApi";
+import { createLocalNote, deleteLocalNote } from "./localNoteApi";
 import { processSyncQueue } from "./syncEngine";
 import * as api from "../lib/api";
 
@@ -58,17 +58,32 @@ describe("syncEngine", () => {
     expect(queue.length).toBe(0);
   });
 
-  it("does not create twice when the note is already syncing", async () => {
-    const note = await createLocalNote({ content: "in flight" });
-    await db.notes.update(note.id, { syncStatus: "syncing" });
+  it("runs create only once across two sync passes for the same pending note", async () => {
+    const note = await createLocalNote({ content: "once" });
 
     vi.spyOn(api, "fetchAuthMe").mockResolvedValue({ id: 1, username: "test", email: "test@test.com" });
-    const createSpy = vi.spyOn(api, "createNote");
+    const createSpy = vi.spyOn(api, "createNote").mockResolvedValue({ ...note, syncStatus: "synced" } as any);
+
+    await processSyncQueue();
+    await processSyncQueue();
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect((await db.syncQueue.toArray()).length).toBe(0);
+  });
+
+  it("tombstones deleted notes instead of removing them locally", async () => {
+    const note = await createLocalNote({ content: "delete me" });
+    await deleteLocalNote(note.id);
+    const deleteItem = await db.syncQueue.orderBy("createdAt").last();
+    expect(deleteItem?.type).toBe("DELETE_NOTE");
+
+    vi.spyOn(api, "fetchAuthMe").mockResolvedValue({ id: 1, username: "test", email: "test@test.com" });
+    vi.spyOn(api, "deleteNote").mockResolvedValue(undefined as any);
 
     await processSyncQueue();
 
-    expect(createSpy).not.toHaveBeenCalled();
-    const queue = await db.syncQueue.toArray();
-    expect(queue.length).toBe(1);
+    const row = await db.notes.get(note.id);
+    expect(row?.isDeleted).toBe(true);
+    expect(row?.syncStatus).toBe("synced");
   });
 });
