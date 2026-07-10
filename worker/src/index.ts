@@ -810,6 +810,7 @@ async function listNotes(env: Env, request: Request, userId: number): Promise<Re
 
 async function createNote(request: Request, env: Env, userId: number): Promise<Response> {
   const body = (await request.json()) as {
+    id?: string;
     title?: string;
     content?: string;
     color?: string;
@@ -822,6 +823,22 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
   const color = body.color ?? "white";
   const tagsJson = JSON.stringify(body.tags ?? []);
 
+  const clientId = typeof body.id === "string" && isUuid(body.id) ? body.id : null;
+
+  if (clientId) {
+    const existing = await env.DB.prepare(
+      `SELECT id, user_id, title, color, tags, pinned, position, r2_key, created_at, updated_at
+       FROM notes WHERE id = ? AND user_id = ?`,
+    )
+      .bind(clientId, userId)
+      .first<NoteRow>();
+
+    if (existing) {
+      const existingContent = await readBodyContent(env.NOTES, existing.r2_key);
+      return json(env, request, noteResponse(existing, existingContent), { status: 200 });
+    }
+  }
+
   const topRow = await env.DB.prepare(
     "SELECT COALESCE(MIN(position), 1) as m FROM notes WHERE user_id = ? AND pinned = 0",
   )
@@ -829,7 +846,7 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
     .first<{ m: number }>();
   const position = (topRow?.m ?? 1) - 1;
 
-  const id = crypto.randomUUID();
+  const id = clientId ?? crypto.randomUUID();
   const r2Key = r2BodyKey(String(userId), id);
 
   const ins = await env.DB.prepare(

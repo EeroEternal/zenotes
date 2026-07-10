@@ -5,60 +5,80 @@ import { getPendingImagesForNote, markImageSynced, replaceLocalImageUrls } from 
 import { markNoteSynced, removeLocalNote } from "./localNoteApi";
 
 const MAX_RETRIES = 3;
+const SYNC_LOCK_NAME = "zenotes-sync";
 
 let _syncing = false;
 
 export async function processSyncQueue() {
-  if (_syncing) return;
-  _syncing = true;
-  try {
-    // Skip sync entirely if the user is not signed in (avoids 401 spam)
+  const run = async () => {
+    if (_syncing) return;
+    _syncing = true;
     try {
-      const user = await api.fetchAuthMe();
-      if (!user) return;
-    } catch {
-      return;
+      await processSyncQueueInner();
+    } finally {
+      _syncing = false;
     }
+  };
 
-    // Keep processing the queue in a loop until empty, re-reading each iteration
-    // so that items added during execution (e.g. UPDATE_NOTE from image sync) are
-    // picked up without needing a recursive call (which would deadlock with the mutex).
-    while (true) {
-      const pending = await db.syncQueue.orderBy("createdAt").toArray();
-      if (pending.length === 0) break;
+  if (typeof navigator !== "undefined" && "locks" in navigator) {
+    await navigator.locks.request(SYNC_LOCK_NAME, run);
+  } else {
+    await run();
+  }
+}
 
-      let processed = 0;
-      for (const op of pending) {
-        if (!op.id) continue;
+async function processSyncQueueInner() {
+  // Skip sync entirely if the user is not signed in (avoids 401 spam)
+  try {
+    const user = await api.fetchAuthMe();
+    if (!user) return;
+  } catch {
+    return;
+  }
 
-        if (op.type === "CREATE_NOTE") {
-          const localNote = await db.notes.get(op.entityId);
-          if (!localNote) {
-            await db.syncQueue.delete(op.id);
-            processed++;
-            continue;
-          }
-        }
+  // Keep processing the queue in a loop until empty, re-reading each iteration
+  // so that items added during execution (e.g. UPDATE_NOTE from image sync) are
+  // picked up without needing a recursive call (which would deadlock with the mutex).
+  while (true) {
+    const pending = await db.syncQueue.orderBy("createdAt").toArray();
+    if (pending.length === 0) break;
 
-        try {
-          await executeOperation(op);
+    let processed = 0;
+    for (const op of pending) {
+      if (!op.id) continue;
+
+      if (op.retries >= MAX_RETRIES) {
+        await db.syncQueue.delete(op.id);
+        processed++;
+        continue;
+      }
+
+      if (op.type === "CREATE_NOTE") {
+        const localNote = await db.notes.get(op.entityId);
+        if (!localNote) {
           await db.syncQueue.delete(op.id);
           processed++;
-        } catch (err) {
-          const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
-          console.error("[SyncEngine] failed", op.type, op.entityId, msg);
-          if (op.retries >= MAX_RETRIES) {
-            // Silent: don't spam the user, they can see the note locally
-          } else {
-            await db.syncQueue.update(op.id, { retries: op.retries + 1 });
-          }
+          continue;
+        }
+        if (localNote.syncStatus === "synced") {
+          await db.syncQueue.delete(op.id);
+          processed++;
+          continue;
         }
       }
 
-      if (processed === 0) break; // nothing worked, avoid infinite loop
+      try {
+        await executeOperation(op);
+        await db.syncQueue.delete(op.id);
+        processed++;
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
+        console.error("[SyncEngine] failed", op.type, op.entityId, msg);
+        await db.syncQueue.update(op.id, { retries: op.retries + 1 });
+      }
     }
-  } finally {
-    _syncing = false;
+
+    if (processed === 0) break; // nothing worked, avoid infinite loop
   }
 }
 
@@ -66,7 +86,7 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
   switch (op.type) {
     case "CREATE_NOTE": {
       const p = op.payload ?? {};
-      const createBody: Record<string, unknown> = {};
+      const createBody: Record<string, unknown> = { id: op.entityId };
       if (typeof p.content === "string") createBody.content = p.content;
       if (typeof p.title === "string" && p.title) createBody.title = p.title;
       if (typeof p.color === "string") createBody.color = p.color;

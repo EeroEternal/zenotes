@@ -119,7 +119,7 @@ export async function fetchNote(id: string): Promise<Note> {
   return res.json();
 }
 
-export async function createNote(body: { content: string; title?: string | null; color?: string; tags?: string[]; pinned?: boolean; position?: number }) {
+export async function createNote(body: { id?: string; content: string; title?: string | null; color?: string; tags?: string[]; pinned?: boolean; position?: number }) {
   return fetchWithTimeout(`${API_BASE}/notes`, {
     ...fetchOpts,
     method: "POST",
