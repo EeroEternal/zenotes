@@ -163,7 +163,7 @@ export function Header({
           </div>
           <div>
             <h1 className="text-2xl font-display text-foreground tracking-tight">Zenotes</h1>
-            <p className="text-xs text-muted-foreground">Capture your thoughts</p>
+            <p className="text-xs text-muted-foreground">Quiet space for ideas</p>
           </div>
         </div>
 

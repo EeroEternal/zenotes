@@ -1,6 +1,6 @@
 # Zenotes Cloudflare Worker（D1 + R2）
 
-API 与 `backend`（Actix + PostgreSQL）路由兼容：`/api/notes`、`/api/auth/*` 等。正文存 R2（`{userId}/{noteId}/body.json`），元数据在 D1。
+提供 `/api/notes`、`/api/auth/*` 等 API。正文存 R2（`{userId}/{noteId}/body.json`），元数据在 D1。
 
 ## 一次性准备
 

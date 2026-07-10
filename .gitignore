@@ -40,10 +40,6 @@ playwright-report/
 # typescript
 *.tsbuildinfo
 
-# rust / cargo
-**/target/
-Cargo.lock
-
 # data
 /data/
 *.sqlite
