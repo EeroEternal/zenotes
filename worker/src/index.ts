@@ -845,12 +845,11 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
     }
   }
 
-  const topRow = await env.DB.prepare(
-    "SELECT COALESCE(MIN(position), 1) as m FROM notes WHERE user_id = ? AND pinned = 0",
-  )
+  // Shift existing unpinned notes so new note is placed first at position 1
+  await env.DB.prepare("UPDATE notes SET position = position + 1 WHERE user_id = ? AND pinned = 0")
     .bind(userId)
-    .first<{ m: number }>();
-  const position = (topRow?.m ?? 1) - 1;
+    .run();
+  const position = 1;
 
   const id = clientId ?? crypto.randomUUID();
   const r2Key = r2BodyKey(String(userId), id);

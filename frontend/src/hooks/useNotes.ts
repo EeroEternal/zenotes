@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect } from "react";
+import React, { createContext, useContext, useMemo, useCallback, useState, useEffect } from "react";
 import type { Note, NoteColor } from "@/types/note";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -85,7 +85,7 @@ function computeMove(
   };
 }
 
-export function useNotes() {
+function useNotesService() {
   const queryClient = useQueryClient();
   const { isOnline } = useNetworkStatus();
   const [page, setPage] = useState(1);
@@ -121,7 +121,17 @@ export function useNotes() {
   }, []);
 
   const allNotes = useMemo(() => {
-    return localNotes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return [...localNotes].sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
+        return a.pinned ? -1 : 1;
+      }
+      const posA = sortPosition(a);
+      const posB = sortPosition(b);
+      if (posA !== posB) {
+        return posA - posB;
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
   }, [localNotes]);
 
   const searchedNotes = useMemo(() => {
@@ -156,11 +166,25 @@ export function useNotes() {
   );
 
   const pinnedNotes = useMemo(
-    () => paginatedNotes.filter((n) => n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b)),
+    () =>
+      paginatedNotes
+        .filter((n) => n.pinned)
+        .sort((a, b) => {
+          const posDiff = sortPosition(a) - sortPosition(b);
+          if (posDiff !== 0) return posDiff;
+          return b.updatedAt.localeCompare(a.updatedAt);
+        }),
     [paginatedNotes],
   );
   const unpinnedNotes = useMemo(
-    () => paginatedNotes.filter((n) => !n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b)),
+    () =>
+      paginatedNotes
+        .filter((n) => !n.pinned)
+        .sort((a, b) => {
+          const posDiff = sortPosition(a) - sortPosition(b);
+          if (posDiff !== 0) return posDiff;
+          return b.updatedAt.localeCompare(a.updatedAt);
+        }),
     [paginatedNotes],
   );
 
@@ -345,6 +369,22 @@ export function useNotes() {
     setSelectedTag,
     allTags,
   };
+}
+
+type NotesContextType = ReturnType<typeof useNotesService>;
+const NotesContext = createContext<NotesContextType | null>(null);
+
+export function NotesProvider({ children }: { children: React.ReactNode }) {
+  const service = useNotesService();
+  return React.createElement(NotesContext.Provider, { value: service }, children);
+}
+
+export function useNotes() {
+  const context = useContext(NotesContext);
+  if (context) {
+    return context;
+  }
+  return useNotesService();
 }
 
 export function useNote(id: string | null) {

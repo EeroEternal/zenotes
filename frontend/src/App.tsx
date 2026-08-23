@@ -7,22 +7,26 @@ import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { NoteEditor } from "@/components/NoteEditor";
 import NotFound from "./pages/NotFound";
 
+import { NotesProvider } from "@/hooks/useNotes";
+
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<ResponsiveLayout />}>
-            <Route path="note/:id" element={<NoteEditor />} />
-          </Route>
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <NotesProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<ResponsiveLayout />}>
+              <Route path="note/:id" element={<NoteEditor />} />
+            </Route>
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </NotesProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

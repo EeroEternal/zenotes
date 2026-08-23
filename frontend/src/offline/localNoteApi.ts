@@ -10,6 +10,19 @@ export function nowIso(): string {
 
 export async function createLocalNote(input: NoteInput = {}) {
   const ts = nowIso();
+  const isPinned = input.pinned ?? false;
+
+  // Shift existing notes in the same pinned state so the new note is placed at position 1 (top)
+  await db.transaction("rw", db.notes, async () => {
+    const existing = await db.notes
+      .filter((n) => !n.isDeleted && Boolean(n.pinned) === isPinned)
+      .toArray();
+    for (const note of existing) {
+      const pos = Number.isFinite(note.position) ? note.position : 1;
+      await db.notes.update(note.id, { position: pos + 1 });
+    }
+  });
+
   const note: LocalNote = {
     id: generateId(),
     content: "",
@@ -17,7 +30,7 @@ export async function createLocalNote(input: NoteInput = {}) {
     color: "white",
     tags: [],
     pinned: false,
-    position: 0,
+    position: 1,
     ...input,
     createdAt: ts,
     updatedAt: ts,
@@ -28,7 +41,11 @@ export async function createLocalNote(input: NoteInput = {}) {
   await db.syncQueue.add({
     type: "CREATE_NOTE",
     entityId: note.id,
-    payload: input,
+    payload: {
+      ...input,
+      id: note.id,
+      position: note.position,
+    },
     retries: 0,
     createdAt: Date.now(),
   });
