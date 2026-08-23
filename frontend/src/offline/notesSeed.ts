@@ -51,6 +51,15 @@ export async function mergeServerNotesIntoLocal(notes: Note[]) {
         }
       }
     }
+
+    // Purge local synced notes that no longer exist on the server (e.g. wiped/deleted on server)
+    const serverIds = new Set(notes.map((n) => n.id));
+    const allLocal = await db.notes.filter((n) => !n.isDeleted && n.syncStatus === "synced").toArray();
+    for (const local of allLocal) {
+      if (!serverIds.has(local.id) && !pendingCreates.has(local.id)) {
+        await db.notes.delete(local.id);
+      }
+    }
   });
 }
 
