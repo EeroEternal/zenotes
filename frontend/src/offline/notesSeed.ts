@@ -15,7 +15,18 @@ export async function mergeServerNotesIntoLocal(notes: Note[]) {
 
       const exists = await db.notes.get(note.id);
       if (exists?.isDeleted) continue;
-      if (exists) continue;
+      if (exists) {
+        if (exists.syncStatus === "synced") {
+          await db.notes.update(note.id, {
+            ...note,
+            title: note.title ?? null,
+            tags: note.tags ?? [],
+            syncStatus: "synced",
+            isDeleted: false,
+          } as any);
+        }
+        continue;
+      }
 
       try {
         await db.notes.add({
@@ -38,6 +49,15 @@ export async function mergeServerNotesIntoLocal(notes: Note[]) {
         } else {
           throw err;
         }
+      }
+    }
+
+    // Clean up local synced notes that no longer exist on the server (e.g. server-side deduplication)
+    const serverNoteIds = new Set(notes.map((n) => n.id));
+    const allLocal = await db.notes.filter((n) => !n.isDeleted && n.syncStatus === "synced").toArray();
+    for (const local of allLocal) {
+      if (!serverNoteIds.has(local.id) && !pendingCreates.has(local.id)) {
+        await db.notes.delete(local.id);
       }
     }
   });
