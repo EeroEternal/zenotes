@@ -16,7 +16,7 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "zenotes-db",
+			"database_name": "mynotes-db",
 			"database_id": "709d0521-8eae-44e6-b4d6-2dc95396390a"
 		}
 	],
