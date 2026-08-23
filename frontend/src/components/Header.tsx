@@ -1,5 +1,5 @@
 import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -52,6 +52,26 @@ export function Header({
   const [loginOpen, setLoginOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchDraft, setSearchDraft] = useState(searchQuery ?? "");
+  const searchDebounceRef = useRef<number>();
+
+  useEffect(() => {
+    setSearchDraft(searchQuery ?? "");
+  }, [searchQuery]);
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
+  const commitSearch = (value: string) => {
+    setSearchDraft(value);
+    if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = window.setTimeout(() => {
+      onSearchChange?.(value);
+    }, 200);
+  };
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -72,8 +92,10 @@ export function Header({
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: api.fetchAuthMe,
-    staleTime: 60_000,
-    retry: false,
+    staleTime: 5 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   });
 
   const loginMut = useMutation({
@@ -123,11 +145,11 @@ export function Header({
   return (
     <header className="sticky top-0 z-40 glass-effect border-b border-border/30">
       <div className="container mx-auto px-6 h-20 relative flex items-center justify-between gap-3 sm:gap-4">
-        <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block pointer-events-none">
+        <div className="absolute left-1/2 top-1/2 hidden w-[min(36rem,calc(100vw-22rem))] -translate-x-1/2 -translate-y-1/2 md:block pointer-events-none">
           <div
             className={`
-              relative w-[min(42rem,calc(100%-20rem))] pointer-events-auto flex items-center rounded-2xl border transition-all duration-300
-              ${isSearchFocused ? "bg-card shadow-note-hover border-border" : "bg-secondary/60 border-transparent hover:bg-secondary/80"}
+              relative w-full min-w-[16rem] pointer-events-auto flex items-center rounded-2xl border transition-all duration-300
+              ${isSearchFocused ? "bg-card shadow-note-hover border-border" : "bg-secondary/80 border-transparent hover:bg-secondary"}
             `}
           >
             <Search
@@ -135,16 +157,24 @@ export function Header({
             />
             <input
               type="text"
-              value={searchQuery ?? ""}
-              onChange={(e) => onSearchChange?.(e.target.value)}
+              value={searchDraft}
+              onChange={(e) => commitSearch(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
               placeholder="Search notes..."
-              className="w-full py-2.5 pl-11 pr-10 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full py-2.5 pl-11 pr-10 bg-transparent text-sm text-foreground caret-primary placeholder:text-muted-foreground focus:outline-none"
+              style={{ color: "hsl(var(--foreground))", WebkitTextFillColor: "hsl(var(--foreground))" }}
             />
-            {(searchQuery ?? "").length > 0 && (
+            {searchDraft.length > 0 && (
               <button
-                onClick={() => onSearchChange?.("")}
+                type="button"
+                onClick={() => {
+                  setSearchDraft("");
+                  if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+                  onSearchChange?.("");
+                }}
                 className="absolute right-3 p-1 rounded-lg hover:bg-foreground/8 transition-colors"
                 title="Clear"
               >

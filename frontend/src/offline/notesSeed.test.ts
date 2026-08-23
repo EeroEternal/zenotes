@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db } from "./db";
-import { mergeServerNotesIntoLocal } from "./notesSeed";
+import { mergeServerNotesIntoLocal, pullServerNotes } from "./notesSeed";
 import { createLocalNote } from "./localNoteApi";
 import * as api from "../lib/api";
 
@@ -136,6 +136,56 @@ describe("notesSeed", () => {
     expect(rows.find((r) => r.id === localId)).toBeUndefined();
     expect(rows[0]?.content).toBe("sync me");
     expect(rows[0]?.syncStatus).toBe("synced");
+  });
+});
+
+describe("pullServerNotes", () => {
+  it("pages through the full server list", async () => {
+    vi.spyOn(api, "fetchAuthMe").mockResolvedValue({
+      id: 1,
+      username: "lipi",
+      email: "lipi@example.com",
+    });
+    const fetchNotes = vi.spyOn(api, "fetchNotes").mockImplementation(async (page = 1) => {
+      if (page === 1) {
+        return {
+          notes: [
+            {
+              id: "a",
+              content: "one",
+              color: "white",
+              tags: [],
+              pinned: false,
+              position: 1,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          pagination: { page: 1, pageSize: 50, total: 2, totalPages: 2 },
+        };
+      }
+      return {
+        notes: [
+          {
+            id: "b",
+            content: "two",
+            color: "white",
+            tags: [],
+            pinned: false,
+            position: 2,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        pagination: { page: 2, pageSize: 50, total: 2, totalPages: 2 },
+      };
+    });
+
+    const data = await pullServerNotes();
+    expect(fetchNotes).toHaveBeenCalledTimes(2);
+    expect(data.pagination.total).toBe(2);
+    expect(await db.notes.count()).toBe(2);
+    expect((await db.notes.toArray()).map((n) => n.id).sort()).toEqual(["a", "b"]);
   });
 });
 

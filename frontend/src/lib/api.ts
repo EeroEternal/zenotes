@@ -100,17 +100,11 @@ export interface NotesResponse {
 
 export async function fetchNotes(page = 1, pageSize = 50): Promise<NotesResponse> {
   const url = `${API_BASE}/notes?page=${page}&pageSize=${pageSize}`;
-  console.log('[API] Fetching notes:', url);
-  const res = await fetch(url, fetchOpts);
-  console.log('[API] Response status:', res.status);
-  if (res.status === 401) {
-    console.warn('[API] Unauthorized');
-    return { notes: [], pagination: { page: 1, pageSize, total: 0, totalPages: 0 } };
-  }
+  const res = await fetchWithTimeout(url, fetchOpts, 60_000);
+  // Throw on 401 so seed/sync can distinguish "not signed in" from "empty list".
+  // Returning a fake empty page previously made pullServerNotes stop after page 1.
   await throwIfNotOk(res);
-  const data = await res.json();
-  console.log('[API] Response data:', data);
-  return data;
+  return res.json();
 }
 
 export async function fetchNote(id: string): Promise<Note> {
@@ -187,6 +181,38 @@ export async function importGoogleKeep(files: { raw: string }[]): Promise<Import
   });
   await throwIfNotOk(res);
   return res.json();
+}
+
+export type AnalyzeNoteResult = {
+  noteId: string;
+  summary: string;
+  ocrText: string;
+  ocrErrors: string[];
+  mediaCount: number;
+  appended: boolean;
+  note: Note | null;
+};
+
+/** OCR images (OpenRouter) + summarize note; optionally append result into note body. */
+export async function analyzeNote(
+  noteId: string,
+  opts: { append?: boolean; lang?: string } = {},
+): Promise<AnalyzeNoteResult> {
+  const res = await fetchWithTimeout(
+    `${API_BASE}/notes/${encodeURIComponent(noteId)}/analyze`,
+    {
+      ...fetchOpts,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        append: opts.append !== false,
+        lang: opts.lang ?? "zh",
+      }),
+    },
+    120_000,
+  );
+  await throwIfNotOk(res);
+  return res.json() as Promise<AnalyzeNoteResult>;
 }
 
 export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id: string }> {

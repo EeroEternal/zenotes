@@ -9,7 +9,13 @@ import NotFound from "./pages/NotFound";
 
 import { NotesProvider } from "@/hooks/useNotes";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

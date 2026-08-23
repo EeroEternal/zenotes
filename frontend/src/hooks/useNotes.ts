@@ -92,22 +92,15 @@ function useNotesService() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Seed local DB from server on mount / when online
+  // Seed local DB from server on mount / when online.
+  // Partial pages are written as they arrive; failures retry so we don't stick at ~100 notes.
   const seedQuery = useQuery({
     queryKey: ["notes", "seed"],
-    queryFn: async () => {
-      try {
-        return await pullServerNotes();
-      } catch (err) {
-        console.error("[notes seed]", err);
-        return {
-          notes: [],
-          pagination: { page: 1, pageSize: 1000, total: 0, totalPages: 0 },
-        };
-      }
-    },
+    queryFn: async () => pullServerNotes(),
     enabled: isOnline,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+    retry: 2,
+    retryDelay: (n) => Math.min(8000, 1000 * 2 ** n),
   });
 
   // Live local notes

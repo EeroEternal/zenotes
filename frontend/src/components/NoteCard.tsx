@@ -19,10 +19,26 @@ const colorClasses: Record<NoteColor, string> = {
   purple: 'bg-note-lavender',
 };
 
+/** Card preview: drop HTML comment markers; keep image + short AI caption only. */
+function cardPreviewContent(raw: string): string {
+  let s = raw.replace(/<!--\s*zenotes:ai-summary\s*-->/gi, "").trim();
+  const aiIdx = s.search(/^##\s*AI\s*总结\s*$/m);
+  if (aiIdx !== -1) {
+    const before = s.slice(0, aiIdx).trimEnd();
+    let after = s.slice(aiIdx).replace(/^##\s*AI\s*总结\s*/m, "").trim();
+    // Drop legacy OCR dump if still present in older notes
+    after = after.replace(/\n###\s*OCR\s*原文[\s\S]*$/i, "").trim();
+    if (after.length > 280) after = `${after.slice(0, 280).trimEnd()}…`;
+    return [before, after].filter(Boolean).join("\n\n");
+  }
+  return s;
+}
+
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
   const raw = String(note.content ?? "");
-  const hasMedia = /(?:mynotes|zenotes):media:/i.test(raw);
-  const isLongContent = raw.length > 150;
+  const preview = cardPreviewContent(raw);
+  const hasMedia = /(?:mynotes|zenotes):media:/i.test(preview);
+  const isLongContent = preview.length > 150;
   const longTextOnlyPreview = isLongContent && !hasMedia;
 
   return (
@@ -50,15 +66,15 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             {note.title}
           </h3>
         )}
-        {raw.trim() ? (
+        {preview.trim() ? (
         <div
           className={`
-          text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words
-          ${hasMedia ? "max-h-[min(70vh,28rem)] overflow-y-auto" : ""}
-          ${longTextOnlyPreview ? "max-h-[6.75rem] overflow-hidden" : ""}
+          text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words overflow-hidden
+          ${hasMedia ? "max-h-[min(50vh,22rem)]" : ""}
+          ${longTextOnlyPreview ? "max-h-[6.75rem]" : ""}
         `}
         >
-          {parseNoteContentToNodes(raw, note.id, "card")}
+          {parseNoteContentToNodes(preview, note.id, "card")}
         </div>
         ) : (
           <p className="text-xs text-muted-foreground/50">无正文</p>

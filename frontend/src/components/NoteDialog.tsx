@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Note, NoteColor } from '@/types/note';
-import { X, Pin, Palette, Image, Tag as TagIcon, Loader2, Bold, Italic, List, Trash2 } from 'lucide-react';
+import { X, Pin, Palette, Image, Tag as TagIcon, Loader2, Bold, Italic, List, Trash2, Sparkles } from 'lucide-react';
 import { noteContentToTipTapHtml, tipTapHtmlToNoteContent } from '@/lib/note-editor-serialization';
 import { createNoteEditorExtensions } from '@/lib/note-tiptap-extensions';
 import { noteMediaUrl } from '@/lib/note-media';
@@ -61,6 +61,7 @@ export function NoteDialog({
   const [tagsText, setTagsText] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const editorWrapRef = useRef<HTMLDivElement>(null);
 
   const extensions = useMemo(() => createNoteEditorExtensions('Take a note...'), []);
@@ -125,6 +126,36 @@ export function NoteDialog({
     if (!window.confirm('删除这条笔记？此操作无法撤销。')) return;
     onDelete(note.id);
     onOpenChange(false);
+  };
+
+  const handleAnalyze = async () => {
+    if (!note || analyzing) return;
+    // Persist local edits first so server analyzes the latest body.
+    persistChanges();
+    setAnalyzing(true);
+    try {
+      const result = await api.analyzeNote(note.id, { append: true, lang: 'zh' });
+      if (result.note) {
+        onUpdate(note.id, {
+          content: result.note.content,
+          title: result.note.title ?? undefined,
+          updatedAt: result.note.updatedAt,
+        });
+        if (editor) {
+          const html = noteContentToTipTapHtml(result.note.content ?? '', note.id);
+          editor.commands.setContent(html, { emitUpdate: false });
+        }
+      }
+      const warn =
+        result.ocrErrors?.length > 0
+          ? `（${result.ocrErrors.length} 张图 OCR 有警告）`
+          : '';
+      toast.success(`已生成 AI 总结${warn}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : '分析失败，请稍后重试');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const showTagsRow = Boolean(tagsText) || Boolean(editor && !editor.isEmpty);
@@ -309,6 +340,15 @@ export function NoteDialog({
             title="Insert image"
           >
             {mediaUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            disabled={analyzing}
+            onClick={() => void handleAnalyze()}
+            className="p-2.5 rounded-xl hover:bg-foreground/8 transition-colors text-muted-foreground disabled:opacity-50"
+            title="OCR + AI 总结（OpenRouter）"
+          >
+            {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           </button>
           <button type="button" className="p-2.5 rounded-xl hover:bg-foreground/8 transition-colors text-muted-foreground">
             <TagIcon className="w-4 h-4" />

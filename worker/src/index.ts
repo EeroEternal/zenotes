@@ -85,6 +85,13 @@ export interface Env {
   /** 设为 "true" 时才在 Worker 内调用 argon2Verify（付费/高 CPU 场景）；默认不调用，避免免费套餐长时间卡住 */
   ALLOW_ARGON2_VERIFY?: string;
   GEMINI_API_KEY?: string; // For the agent's LLM
+  DEEPSEEK_API_KEY?: string;
+  /** OpenRouter key — used for OCR + note summary */
+  OPENROUTER_API_KEY?: string;
+  /** default: mistralai/mistral-small-3.2-24b-instruct (cheap vision OCR) */
+  OPENROUTER_OCR_MODEL?: string;
+  /** default: mistralai/mistral-small-3.2-24b-instruct */
+  OPENROUTER_SUMMARY_MODEL?: string;
 }
 
 const ARGON2_MIGRATION_MSG =
@@ -129,30 +136,27 @@ function sessionUserId(request: Request): number | null {
 }
 
 /**
- * 线上：apex / www 页面请求 api 子域属于「跨源」fetch，须 SameSite=None + Secure，否则 Chrome 等不带上会话 Cookie。
- * Domain=zenotes.site 让 zenotes.site 与 api.zenotes.site 共享同一块 Cookie。
+ * zenotes.site → api.zenotes.site is same-site (not cross-site).
+ * SameSite=Lax is enough for credentials:include. SameSite=None + Domain=
+ * parent domain is treated as a third-party cookie and dropped by Chrome/Safari.
  */
-function sessionCookie(userId: number, request: Request): string {
-  const url = new URL(request.url);
-  const maxAge = 60 * 60 * 24 * 7;
-  if (url.protocol === "https:") {
-    const host = url.hostname;
-    const domain =
-      host === "api.zenotes.site" || host === "www.zenotes.site" ? "; Domain=zenotes.site" : "";
-    return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}${domain}`;
-  }
-  return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+function isHttps(request: Request): boolean {
+  return new URL(request.url).protocol === "https:";
 }
 
-function clearSessionCookie(request: Request): string {
-  const url = new URL(request.url);
-  if (url.protocol === "https:") {
-    const host = url.hostname;
-    const domain =
-      host === "api.zenotes.site" || host === "www.zenotes.site" ? "; Domain=zenotes.site" : "";
-    return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0${domain}`;
-  }
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+function sessionCookie(userId: number, request: Request): string {
+  const maxAge = 60 * 60 * 24 * 7;
+  const secure = isHttps(request) ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+function clearSessionCookies(request: Request): string[] {
+  const secure = isHttps(request) ? "; Secure" : "";
+  return [
+    `${SESSION_COOKIE}=; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=0`,
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0; Domain=zenotes.site`,
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Domain=zenotes.site`,
+  ];
 }
 
 interface NoteRow {
@@ -488,7 +492,8 @@ export default {
       }
       if (path === "/api/auth/logout" && request.method === "POST") {
         const h = corsHeaders(env, request, { "Content-Type": "application/json" });
-        h.append("Set-Cookie", clearSessionCookie(request));
+        for (const c of clearSessionCookies(request)) h.append("Set-Cookie", c);
+        h.set("Cache-Control", "private, no-store");
         return new Response(JSON.stringify({ message: "Signed out" }), { headers: h });
       }
       if (path === "/api/auth/me" && request.method === "GET") {
@@ -580,6 +585,15 @@ export default {
         return rebuildNoteFromR2Media(env, request, uid, pathIdSegment(rebuildMatch[1]!));
       }
 
+      const analyzeMatch = path.match(/^\/api\/notes\/([^/]+)\/analyze\/?$/);
+      if (analyzeMatch && request.method === "POST") {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        return analyzeNote(request, env, uid, pathIdSegment(analyzeMatch[1]!));
+      }
+
       const mediaUploadMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/?$/);
       if (mediaUploadMatch && request.method === "POST") {
         const uid = sessionUserId(request);
@@ -642,6 +656,7 @@ function json(env: Env, request: Request, data: unknown, init?: ResponseInit): R
     ...init,
     headers: corsHeaders(env, request, {
       "Content-Type": "application/json",
+      "Cache-Control": "private, no-store",
       ...(init?.headers as Record<string, string> | undefined),
     }),
   });
@@ -690,8 +705,12 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     return json(env, request, { error: "register_failed" }, { status: 500 });
   }
 
-  const h = corsHeaders(env, request, { "Content-Type": "application/json" });
+  const h = corsHeaders(env, request, {
+    "Content-Type": "application/json",
+    "Cache-Control": "private, no-store",
+  });
   h.append("Set-Cookie", sessionCookie(row.id, request));
+  for (const c of clearSessionCookies(request).slice(1)) h.append("Set-Cookie", c);
   return new Response(
     JSON.stringify({ id: row.id, username: row.username, email: row.email }),
     { headers: h },
@@ -747,8 +766,12 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     return json(env, request, { error: "Invalid credentials" }, { status: 401 });
   }
 
-  const h = corsHeaders(env, request, { "Content-Type": "application/json" });
+  const h = corsHeaders(env, request, {
+    "Content-Type": "application/json",
+    "Cache-Control": "private, no-store",
+  });
   h.append("Set-Cookie", sessionCookie(row.id, request));
+  for (const c of clearSessionCookies(request).slice(1)) h.append("Set-Cookie", c);
   return new Response(
     JSON.stringify({ id: row.id, username: row.username, email: row.email }),
     { headers: h },
@@ -774,7 +797,8 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 async function listNotes(env: Env, request: Request, userId: number): Promise<Response> {
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
-  const pageSize = Math.max(1, Math.min(10000, parseInt(url.searchParams.get("pageSize") ?? "50", 10)));
+  // Cap at 100: each note body is an R2 read. pageSize=1000 exceeds Worker subrequest limits (CF 1101).
+  const pageSize = Math.max(1, Math.min(100, parseInt(url.searchParams.get("pageSize") ?? "50", 10)));
   const offset = (page - 1) * pageSize;
 
   const { results } = await env.DB.prepare(
@@ -1256,5 +1280,269 @@ async function importGoogleKeep(request: Request, env: Env, userId: number): Pro
     totalFiles,
     importedCount,
     skippedCount,
+  });
+}
+
+const MEDIA_EMBED_RE = /!\[[^\]]*\]\((?:mynotes|zenotes):media:([0-9a-f-]{36})\)/gi;
+const MAX_OCR_IMAGES = 4;
+const MAX_OCR_IMAGE_BYTES = 4 * 1024 * 1024;
+const ANALYZE_MARKER = "<!-- zenotes:ai-summary -->";
+
+function extractMediaIds(content: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const re = new RegExp(MEDIA_EMBED_RE.source, MEDIA_EMBED_RE.flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const id = m[1]!.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(m[1]!);
+  }
+  return ids;
+}
+
+function stripAiSummary(content: string): string {
+  const idx = content.indexOf(ANALYZE_MARKER);
+  if (idx === -1) return content.trimEnd();
+  return content.slice(0, idx).trimEnd();
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function stripTextWithoutMedia(content: string): string {
+  return content
+    .replace(new RegExp(MEDIA_EMBED_RE.source, MEDIA_EMBED_RE.flags), " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function openRouterChat(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<{ content: string; raw: unknown }> {
+  const key = env.OPENROUTER_API_KEY;
+  if (!key) {
+    throw new Error("OPENROUTER_API_KEY is not configured");
+  }
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://zenotes.site",
+      "X-Title": "Zenotes",
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      typeof (raw as { error?: { message?: string } })?.error?.message === "string"
+        ? (raw as { error: { message: string } }).error.message
+        : JSON.stringify(raw).slice(0, 300);
+    throw new Error(`openrouter ${res.status}: ${msg}`);
+  }
+  const content = String(
+    (raw as { choices?: Array<{ message?: { content?: unknown } }> })?.choices?.[0]?.message
+      ?.content ?? "",
+  );
+  return { content, raw };
+}
+
+/** Describe one image via OpenRouter vision (what it is / what it's for). */
+async function describeImageOpenRouter(
+  env: Env,
+  bytes: Uint8Array,
+  contentType: string,
+  lang: string,
+): Promise<string> {
+  const model = env.OPENROUTER_OCR_MODEL || "mistralai/mistral-small-3.2-24b-instruct";
+  const language =
+    lang === "en" ? "English" : lang === "zh" || !lang ? "简体中文" : lang;
+  const b64 = bytesToBase64(bytes);
+  const dataUrl = `data:${contentType || "image/jpeg"};base64,${b64}`;
+  const { content } = await openRouterChat(env, {
+    model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `用${language}说明这张图是什么、在干什么、关键信息是什么。\n\n要求：\n1. 2–5 句话，像笔记说明，不要罗列 OCR 原文\n2. 说清场景/产品/界面用途（例如聊天截图、架构图、账单、推文等）\n3. 只保留真正重要的人名、数字、结论；不要逐字抄屏\n4. 不要开场白、不要标题`,
+          },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+  });
+  return content.trim();
+}
+
+async function summarizeOpenRouter(env: Env, sourceText: string, lang: string): Promise<string> {
+  const model = env.OPENROUTER_SUMMARY_MODEL || "mistralai/mistral-small-3.2-24b-instruct";
+  const language =
+    lang === "en" ? "English" : lang === "zh" || !lang ? "简体中文" : lang;
+  const clipped = sourceText.slice(0, 24_000);
+  const { content } = await openRouterChat(env, {
+    model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You write short note captions. Describe what the material is about and what it is for. Be concise and factual. Do not dump raw OCR.",
+      },
+      {
+        role: "user",
+        content: `请用${language}把下面材料整理成一段笔记说明。\n\n要求：\n1. 2–6 句话，说明这是什么、在干什么、为什么值得记\n2. 不要 OCR 原文堆砌，不要大段 bullet\n3. 只保留关键数字/人名/结论\n4. 不要开场白\n\n---\n${clipped}`,
+      },
+    ],
+  });
+  return content.trim();
+}
+
+async function analyzeNote(
+  request: Request,
+  env: Env,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  if (!env.OPENROUTER_API_KEY) {
+    return json(
+      env,
+      request,
+      {
+        error: "openrouter_not_configured",
+        message: "Set OPENROUTER_API_KEY on the worker (wrangler secret put OPENROUTER_API_KEY).",
+      },
+      { status: 503 },
+    );
+  }
+
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  let append = true;
+  let lang = "zh";
+  try {
+    const body = (await request.json()) as { append?: boolean; lang?: string };
+    if (typeof body.append === "boolean") append = body.append;
+    if (typeof body.lang === "string" && body.lang.trim()) lang = body.lang.trim();
+  } catch {
+    // empty body ok
+  }
+
+  const rawContent = await readBodyContent(env.NOTES, row.r2_key);
+  const baseContent = stripAiSummary(rawContent);
+  const mediaIds = extractMediaIds(baseContent).slice(0, MAX_OCR_IMAGES);
+  const plainText = stripTextWithoutMedia(baseContent);
+
+  const imageDescriptions: string[] = [];
+  const ocrErrors: string[] = [];
+  for (let i = 0; i < mediaIds.length; i++) {
+    const mediaId = mediaIds[i]!;
+    const key = r2MediaKey(String(userId), noteId, mediaId);
+    const obj = await env.NOTES.get(key);
+    if (!obj) {
+      ocrErrors.push(`${mediaId}: missing`);
+      continue;
+    }
+    const ab = await obj.arrayBuffer();
+    if (ab.byteLength > MAX_OCR_IMAGE_BYTES) {
+      ocrErrors.push(`${mediaId}: too_large`);
+      continue;
+    }
+    const bytes = new Uint8Array(ab);
+    const ct = obj.httpMetadata?.contentType || "image/jpeg";
+    try {
+      const text = await describeImageOpenRouter(env, bytes, ct, lang);
+      if (text) {
+        imageDescriptions.push(
+          mediaIds.length > 1 ? `图 ${i + 1}：${text}` : text,
+        );
+      }
+    } catch (e) {
+      ocrErrors.push(`${mediaId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  const imageText = imageDescriptions.join("\n\n").trim();
+  let summary = "";
+  try {
+    if (plainText && imageText) {
+      summary = await summarizeOpenRouter(
+        env,
+        `笔记文字：\n${plainText}\n\n图片说明：\n${imageText}`,
+        lang,
+      );
+    } else if (imageText) {
+      // Image-only note: vision description is already the caption.
+      summary =
+        imageDescriptions.length === 1
+          ? imageText
+          : await summarizeOpenRouter(env, imageText, lang);
+    } else if (plainText) {
+      summary = await summarizeOpenRouter(env, plainText, lang);
+    }
+  } catch (e) {
+    return json(
+      env,
+      request,
+      {
+        error: "summary_failed",
+        message: e instanceof Error ? e.message : String(e),
+        ocrErrors,
+      },
+      { status: 502 },
+    );
+  }
+
+  if (!summary) {
+    const detail = ocrErrors.length ? ` ${ocrErrors.slice(0, 2).join("; ")}` : "";
+    return json(
+      env,
+      request,
+      {
+        error: "nothing_to_analyze",
+        message: `笔记没有可分析的文字或图片。${detail}`,
+        ocrErrors,
+      },
+      { status: 400 },
+    );
+  }
+
+  let content = baseContent;
+  if (append && summary) {
+    const block = ["", ANALYZE_MARKER, "", "## AI 总结", "", summary, ""].join("\n");
+    content = `${baseContent.trimEnd()}\n${block}`;
+    await env.NOTES.put(row.r2_key, JSON.stringify({ content }), {
+      httpMetadata: { contentType: "application/json" },
+    });
+    await env.DB.prepare("UPDATE notes SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      .bind(noteId, userId)
+      .run();
+  }
+
+  const updated = await assertNoteOwned(env, userId, noteId);
+  return json(env, request, {
+    noteId,
+    summary,
+    ocrText: "",
+    ocrErrors,
+    mediaCount: mediaIds.length,
+    appended: append,
+    note: updated ? noteResponse(updated, content) : null,
   });
 }
