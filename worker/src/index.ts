@@ -774,7 +774,7 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 async function listNotes(env: Env, request: Request, userId: number): Promise<Response> {
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
-  const pageSize = Math.max(1, Math.min(100, parseInt(url.searchParams.get("pageSize") ?? "50", 10)));
+  const pageSize = Math.max(1, Math.min(10000, parseInt(url.searchParams.get("pageSize") ?? "50", 10)));
   const offset = (page - 1) * pageSize;
 
   const { results } = await env.DB.prepare(
@@ -821,6 +821,7 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
     content?: string;
     color?: string;
     tags?: string[];
+    pinned?: boolean;
   };
 
   const titleRaw = body.title?.trim();
@@ -828,6 +829,7 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
   const content = (body.content ?? "").trim();
   const color = body.color ?? "white";
   const tagsJson = JSON.stringify(body.tags ?? []);
+  const isPinned = body.pinned ? 1 : 0;
 
   const clientId = typeof body.id === "string" && isClientNoteId(body.id) ? body.id : null;
 
@@ -845,11 +847,12 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
     }
   }
 
-  // Shift existing unpinned notes so new note is placed first at position 1
-  await env.DB.prepare("UPDATE notes SET position = position + 1 WHERE user_id = ? AND pinned = 0")
-    .bind(userId)
-    .run();
-  const position = 1;
+  const topRow = await env.DB.prepare(
+    "SELECT COALESCE(MIN(position), 1) as m FROM notes WHERE user_id = ? AND pinned = ?",
+  )
+    .bind(userId, isPinned)
+    .first<{ m: number }>();
+  const position = (topRow?.m ?? 1) - 1;
 
   const id = clientId ?? crypto.randomUUID();
   const r2Key = r2BodyKey(String(userId), id);
