@@ -592,13 +592,13 @@ export default {
       const mediaItemMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/([^/]+)\/?$/);
       if (mediaItemMatch) {
         const uid = sessionUserId(request);
-        if (uid === null) {
-          return json(env, request, { error: "Unauthorized" }, { status: 401 });
-        }
         const noteId = pathIdSegment(mediaItemMatch[1]!);
         const mediaId = pathIdSegment(mediaItemMatch[2]!);
         if (request.method === "GET") {
           return getNoteMedia(env, request, uid, noteId, mediaId);
+        }
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
         if (request.method === "DELETE") {
           return deleteNoteMedia(env, request, uid, noteId, mediaId);
@@ -1026,19 +1026,31 @@ async function uploadNoteMedia(
 async function getNoteMedia(
   env: Env,
   request: Request,
-  userId: number,
+  userId: number | null,
   noteId: string,
   mediaId: string,
 ): Promise<Response> {
   if (!isUuid(mediaId)) {
     return json(env, request, { error: "not_found" }, { status: 404 });
   }
-  const owned = await assertNoteOwned(env, userId, noteId);
-  if (!owned) {
-    return json(env, request, { error: "not_found" }, { status: 404 });
+
+  let noteUserId = userId;
+  if (noteUserId === null) {
+    const note = await env.DB.prepare("SELECT user_id FROM notes WHERE id = ?")
+      .bind(noteId)
+      .first<{ user_id: number }>();
+    if (!note) {
+      return json(env, request, { error: "not_found" }, { status: 404 });
+    }
+    noteUserId = note.user_id;
+  } else {
+    const owned = await assertNoteOwned(env, noteUserId, noteId);
+    if (!owned) {
+      return json(env, request, { error: "not_found" }, { status: 404 });
+    }
   }
 
-  const key = r2MediaKey(String(userId), noteId, mediaId);
+  const key = r2MediaKey(String(noteUserId), noteId, mediaId);
   const obj = await env.NOTES.get(key);
   if (!obj) {
     return json(env, request, { error: "not_found" }, { status: 404 });
@@ -1047,7 +1059,7 @@ async function getNoteMedia(
   const ct = obj.httpMetadata?.contentType || "application/octet-stream";
   const h = corsHeaders(env, request, {
     "Content-Type": ct,
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": "public, max-age=86400",
   });
   return new Response(obj.body, { headers: h });
 }

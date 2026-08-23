@@ -74,6 +74,7 @@ export function NoteEmbeddedImage({
           <img
             src={src}
             alt={alt}
+            crossOrigin="use-credentials"
             loading="lazy"
             className={`${thumbClass[variant]} pointer-events-none select-none`}
             draggable={false}
@@ -113,6 +114,7 @@ export function NoteEmbeddedImage({
             <img
               src={src}
               alt={alt}
+              crossOrigin="use-credentials"
               className="max-h-[92vh] max-w-[92vw] object-contain shadow-2xl"
               onClick={(e) => e.stopPropagation()}
               draggable={false}
