@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useNotes } from "@/hooks/useNotes";
 import { NotesGrid } from "./NotesGrid";
 import { NoteInput } from "./NoteInput";
+import { AgentGuideBanner } from "./AgentGuideBanner";
+import { AgentGuideDialog } from "./AgentGuideDialog";
 import { Note } from "@/types/note";
 import { useNavigate } from "react-router-dom";
 import {
@@ -15,6 +18,7 @@ import {
 
 export function NoteList() {
   const navigate = useNavigate();
+  const [agentGuideOpen, setAgentGuideOpen] = useState(false);
   const {
     pinnedNotes,
     unpinnedNotes,
@@ -37,8 +41,9 @@ export function NoteList() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto space-y-3.5">
         <NoteInput onAddNote={addNote} isSubmitting={isAddingNote} />
+        <AgentGuideBanner onOpenDetails={() => setAgentGuideOpen(true)} />
       </div>
 
       {allTags.length > 0 && (
@@ -143,6 +148,8 @@ export function NoteList() {
           {pagination.total} notes total, Page {page} / {pagination.totalPages}
         </div>
       )}
+
+      <AgentGuideDialog open={agentGuideOpen} onOpenChange={setAgentGuideOpen} />
     </div>
   );
 }

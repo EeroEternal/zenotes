@@ -1,7 +1,8 @@
-import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key } from "lucide-react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key, Bot } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GlobalTokenDialog } from "./GlobalTokenDialog";
+import { AgentGuideDialog } from "./AgentGuideDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +54,7 @@ export function Header({
   const queryClient = useQueryClient();
   const [loginOpen, setLoginOpen] = useState(false);
   const [globalTokenOpen, setGlobalTokenOpen] = useState(false);
+  const [agentGuideOpen, setAgentGuideOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchDraft, setSearchDraft] = useState(searchQuery ?? "");
@@ -223,6 +225,15 @@ export function Header({
           <Button
             variant="ghost"
             size="icon"
+            onClick={() => setAgentGuideOpen(true)}
+            className="h-9 w-9 rounded-xl hover:bg-secondary text-primary"
+            title="AI Agent 获取笔记指引 (Agent Guide)"
+          >
+            <Bot className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setGlobalTokenOpen(true)}
             className="h-9 w-9 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground"
             title="全局令牌与打包下载"
@@ -243,6 +254,16 @@ export function Header({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAgentGuideOpen(true);
+                }}
+              >
+                <Bot className="mr-2 h-4 w-4 text-primary" />
+                <span>AI Agent 访问指引</span>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
                 onClick={(e) => {
@@ -408,6 +429,7 @@ export function Header({
         </DialogContent>
       </Dialog>
       <GlobalTokenDialog open={globalTokenOpen} onOpenChange={setGlobalTokenOpen} />
+      <AgentGuideDialog open={agentGuideOpen} onOpenChange={setAgentGuideOpen} />
     </header>
   );
 }

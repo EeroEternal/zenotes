@@ -574,6 +574,8 @@ export default {
           service: "zenotes-api",
           health: "/api/health",
           notes: "/api/notes",
+          agentGuide: "/api/agent/guide",
+          llms: "/llms.txt",
         });
       }
 
@@ -581,8 +583,12 @@ export default {
         return json(env, request, {
           ok: true,
           message: "API root; set VITE_API_BASE=https://api.zenotes.site/api in the frontend",
-          try: ["/api/health", "/api/notes"],
+          try: ["/api/health", "/api/notes", "/api/agent/guide", "/llms.txt"],
         });
+      }
+
+      if ((path === "/llms.txt" || path === "/api/agent/guide" || path === "/api/agent/instructions") && request.method === "GET") {
+        return handleAgentGuide(env, request);
       }
 
       if (path === "/api/health" && request.method === "GET") {
@@ -2699,6 +2705,50 @@ async function exportGlobalAllZip(
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Content-Length": String(zipData.byteLength),
+    }),
+  });
+}
+
+async function handleAgentGuide(env: Env, request: Request): Promise<Response> {
+  const token = await getEffectiveGlobalToken(env);
+  const text = `# Zenotes API Guide for AI Agents
+
+Zenotes is a privacy-first note-taking and knowledge base service storing Markdown notes, uploaded files, and directories.
+
+## Authentication
+Every agent request should provide the master global token:
+- Header: \`X-Global-Token: ${token}\`
+- Or Header: \`Authorization: Bearer ${token}\`
+- Or Query Parameter: \`?token=${token}\`
+
+## How to Get and Search Notes
+1. **Search Notes & Files**:
+   \`GET https://api.zenotes.site/api/global/notes?q={keyword}&token=${token}\`
+   Returns JSON list with note metadata, body content (Markdown), associated files with directory paths, tags, and timestamps.
+
+2. **Get Single Note as Raw Markdown**:
+   \`GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token=${token}\`
+   Returns raw clean Markdown text.
+
+3. **Download a File Attachment**:
+   \`GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token=${token}\`
+
+4. **Export a Note with all Files/Directories as ZIP**:
+   \`GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token=${token}\`
+
+5. **Export Entire Knowledge Base as ZIP**:
+   \`GET https://api.zenotes.site/api/global/export-all.zip?token=${token}\`
+
+## Example (cURL)
+\`\`\`bash
+curl -s -H "X-Global-Token: ${token}" "https://api.zenotes.site/api/global/notes?q="
+\`\`\`
+`;
+
+  return new Response(text, {
+    headers: corsHeaders(env, request, {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
     }),
   });
 }

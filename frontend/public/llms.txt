@@ -1,0 +1,24 @@
+# Zenotes AI Agent Integration Guide
+
+> Zenotes is a privacy-first note-taking and knowledge base application.
+> Notes are formatted in Markdown with support for multi-file and directory uploads.
+
+## Master Global Token Authentication
+Agents can access all notes and directories without session cookies:
+- HTTP Header: `X-Global-Token: <token>`
+- Or HTTP Header: `Authorization: Bearer <token>`
+- Or URL Parameter: `?token=<token>`
+- Default master token: `zenotes_master_sec_token`
+
+## API Endpoints
+- **Search & List Notes**: `GET https://api.zenotes.site/api/global/notes?q={query}&token={token}`
+- **Get Note Markdown**: `GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token={token}`
+- **Download File**: `GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token={token}`
+- **Export Note ZIP**: `GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token={token}`
+- **Export All Notes & Directories ZIP**: `GET https://api.zenotes.site/api/global/export-all.zip?token={token}`
+- **Web UI Global Console**: `https://zenotes.site/global?token={token}`
+
+## Quick Example
+```bash
+curl -s -H "X-Global-Token: zenotes_master_sec_token" "https://api.zenotes.site/api/global/notes?q="
+```
