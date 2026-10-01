@@ -1,20 +1,50 @@
-import type { Note } from "@/types/note";
+import type { Note, NoteFile, NoteShare } from "@/types/note";
 import { ApiError, throwIfNotOk } from "@/lib/api-error";
 
 const AUTH_FETCH_MS = 25_000;
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
+const TOKEN_KEY = "zenotes_auth_token";
+
+export function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {}
+}
+
 const fetchOpts: RequestInit = { credentials: "include" };
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number = AUTH_FETCH_MS): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = getAuthToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const mergedInit: RequestInit = {
+    credentials: "include",
+    ...init,
+    headers,
+  };
   if (typeof AbortController === "undefined") {
-    return fetch(url, init);
+    return fetch(url, mergedInit);
   }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ac.signal });
+    return await fetch(url, { ...mergedInit, signal: ac.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -30,15 +60,23 @@ export type CurrentUser = {
   id: number;
   username: string;
   email: string;
+  token?: string;
 };
 
 export { ApiError };
 
 export async function fetchAuthMe(): Promise<CurrentUser | null> {
-  const res = await fetch(`${API_BASE}/auth/me`, fetchOpts);
-  if (res.status === 401) return null;
+  const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { method: "GET" }, 15_000);
+  if (res.status === 401) {
+    setAuthToken(null);
+    return null;
+  }
   await throwIfNotOk(res);
-  return res.json();
+  const data = (await res.json()) as CurrentUser;
+  if (data?.id && !getAuthToken()) {
+    setAuthToken(String(data.id));
+  }
+  return data;
 }
 
 export async function login(username: string, password: string): Promise<CurrentUser> {
@@ -57,7 +95,13 @@ export async function login(username: string, password: string): Promise<Current
     throw e;
   }
   await throwIfNotOk(res);
-  return res.json();
+  const data = (await res.json()) as CurrentUser;
+  if (data?.token) {
+    setAuthToken(data.token);
+  } else if (data?.id) {
+    setAuthToken(String(data.id));
+  }
+  return data;
 }
 
 export async function register(input: {
@@ -80,12 +124,21 @@ export async function register(input: {
     throw e;
   }
   await throwIfNotOk(res);
-  return res.json();
+  const data = (await res.json()) as CurrentUser;
+  if (data?.token) {
+    setAuthToken(data.token);
+  } else if (data?.id) {
+    setAuthToken(String(data.id));
+  }
+  return data;
 }
 
 export async function logout(): Promise<void> {
-  const res = await fetch(`${API_BASE}/auth/logout`, { ...fetchOpts, method: "POST" });
-  await throwIfNotOk(res);
+  try {
+    await fetchWithTimeout(`${API_BASE}/auth/logout`, { method: "POST" }, 10_000);
+  } finally {
+    setAuthToken(null);
+  }
 }
 
 export interface NotesResponse {
@@ -229,3 +282,104 @@ export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id:
   await throwIfNotOk(res);
   return res.json();
 }
+
+export async function uploadNoteFiles(
+  noteId: string,
+  files: File[],
+  paths?: string[],
+): Promise<{ files: NoteFile[] }> {
+  const formData = new FormData();
+  files.forEach((f, idx) => {
+    formData.append(`file_${idx}`, f);
+    if (paths && paths[idx]) {
+      formData.append(`path_${idx}`, paths[idx]!);
+    }
+  });
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/files`, {
+    method: "POST",
+    body: formData,
+  }, 120_000);
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function fetchNoteFiles(noteId: string): Promise<{ files: NoteFile[] }> {
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/files`, {
+    method: "GET",
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function deleteNoteFile(noteId: string, fileId: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${API_BASE}/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}`,
+    { method: "DELETE" },
+  );
+  await throwIfNotOk(res);
+}
+
+export async function toggleShareNote(noteId: string, isPublic: boolean): Promise<NoteShare> {
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/share`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isPublic }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function fetchNoteShare(noteId: string): Promise<NoteShare> {
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/share`, {
+    method: "GET",
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export interface PublicShareData {
+  note: Note;
+  files: NoteFile[];
+  author: string;
+  shareId: string;
+}
+
+export async function fetchPublicShare(shareId: string): Promise<PublicShareData> {
+  const res = await fetchWithTimeout(`${API_BASE}/public/shares/${encodeURIComponent(shareId)}`, {
+    method: "GET",
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export function getPublicFileDownloadUrl(shareId: string, fileId: string): string {
+  return `${API_BASE}/public/shares/${encodeURIComponent(shareId)}/files/${encodeURIComponent(fileId)}`;
+}
+
+export function getPublicMediaUrl(shareId: string, mediaId: string): string {
+  return `${API_BASE}/public/shares/${encodeURIComponent(shareId)}/media/${encodeURIComponent(mediaId)}`;
+}
+
+export function getNoteFileDownloadUrl(noteId: string, fileId: string): string {
+  const token = getAuthToken();
+  const base = `${API_BASE}/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}`;
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+}
+
+export async function downloadNoteFile(noteId: string, fileId: string, filename: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${API_BASE}/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}`,
+    fetchOpts,
+  );
+  await throwIfNotOk(res);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+

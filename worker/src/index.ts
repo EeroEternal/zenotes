@@ -118,7 +118,7 @@ function corsHeaders(env: Env, request: Request, extra?: HeadersInit): Headers {
     h.set("Access-Control-Allow-Credentials", "true");
   }
   h.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie");
+  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization");
   return h;
 }
 
@@ -128,11 +128,39 @@ async function sha256Hex(password: string): Promise<string> {
 }
 
 function sessionUserId(request: Request): number | null {
-  const cookie = request.headers.get("Cookie") || "";
-  const m = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
-  if (!m) return null;
-  const id = parseInt(decodeURIComponent(m[1]), 10);
-  return Number.isNaN(id) ? null : id;
+  // 1. Check Authorization: Bearer <token>
+  const auth = request.headers.get("Authorization");
+  if (auth && auth.startsWith("Bearer ")) {
+    const raw = auth.slice(7).trim();
+    const id = parseInt(raw, 10);
+    if (!Number.isNaN(id) && id > 0) return id;
+  }
+
+  // 2. Check query param ?token=
+  try {
+    const url = new URL(request.url);
+    const token = url.searchParams.get("token");
+    if (token) {
+      const id = parseInt(token, 10);
+      if (!Number.isNaN(id) && id > 0) return id;
+    }
+  } catch {}
+
+  // 3. Check Cookie (robust against multiple or empty values)
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const parts = cookieHeader.split(";");
+  for (const part of parts) {
+    const eqIdx = part.indexOf("=");
+    if (eqIdx !== -1) {
+      const name = part.slice(0, eqIdx).trim();
+      const val = part.slice(eqIdx + 1).trim();
+      if (name === SESSION_COOKIE && val) {
+        const id = parseInt(decodeURIComponent(val), 10);
+        if (!Number.isNaN(id) && id > 0) return id;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -145,7 +173,7 @@ function isHttps(request: Request): boolean {
 }
 
 function sessionCookie(userId: number, request: Request): string {
-  const maxAge = 60 * 60 * 24 * 7;
+  const maxAge = 60 * 60 * 24 * 30; // 30 days
   const secure = isHttps(request) ? "; Secure" : "";
   return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=${maxAge}`;
 }
@@ -207,6 +235,74 @@ function r2MediaKey(userId: string, noteId: string, mediaId: string): string {
   return `${userId}/${noteId}/media/${mediaId}`;
 }
 
+export interface NoteFileRow {
+  id: string;
+  note_id: string;
+  user_id: number;
+  filename: string;
+  path: string;
+  size: number;
+  content_type: string;
+  r2_key: string;
+  created_at: string;
+}
+
+function fileResponse(row: NoteFileRow) {
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    filename: row.filename,
+    path: row.path,
+    size: row.size,
+    contentType: row.content_type,
+    createdAt: row.created_at,
+    downloadUrl: `/api/notes/${row.note_id}/files/${row.id}`,
+  };
+}
+
+let _tablesEnsured = false;
+async function ensureDbTables(db: D1Database): Promise<void> {
+  if (_tablesEnsured) return;
+  try {
+    await db.batch([
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS note_files (
+          id TEXT PRIMARY KEY,
+          note_id TEXT NOT NULL,
+          user_id INTEGER NOT NULL,
+          filename TEXT NOT NULL,
+          path TEXT NOT NULL DEFAULT '',
+          size INTEGER NOT NULL DEFAULT 0,
+          content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+          r2_key TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+      `),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_files_note_id ON note_files(note_id);`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_files_user_id ON note_files(user_id);`),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS note_shares (
+          id TEXT PRIMARY KEY,
+          note_id TEXT NOT NULL UNIQUE,
+          user_id INTEGER NOT NULL,
+          is_public INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+      `),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_shares_id ON note_shares(id);`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_shares_note_id ON note_shares(note_id);`),
+    ]);
+    _tablesEnsured = true;
+  } catch (e) {
+    console.error("Failed to ensure tables:", e);
+  }
+}
+
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -619,6 +715,80 @@ export default {
         }
       }
 
+      // Public share routes (no auth required)
+      const publicShareMatch = path.match(/^\/api\/public\/shares\/([^/]+)\/?$/);
+      if (publicShareMatch && request.method === "GET") {
+        return getPublicShare(env, request, pathIdSegment(publicShareMatch[1]!));
+      }
+
+      const publicShareFileMatch = path.match(/^\/api\/public\/shares\/([^/]+)\/files\/([^/]+)\/?$/);
+      if (publicShareFileMatch && request.method === "GET") {
+        return getPublicShareFile(
+          env,
+          request,
+          pathIdSegment(publicShareFileMatch[1]!),
+          pathIdSegment(publicShareFileMatch[2]!),
+        );
+      }
+
+      const publicShareMediaMatch = path.match(/^\/api\/public\/shares\/([^/]+)\/media\/([^/]+)\/?$/);
+      if (publicShareMediaMatch && request.method === "GET") {
+        return getPublicShareMedia(
+          env,
+          request,
+          pathIdSegment(publicShareMediaMatch[1]!),
+          pathIdSegment(publicShareMediaMatch[2]!),
+        );
+      }
+
+      // Note share routes (authenticated)
+      const noteShareMatch = path.match(/^\/api\/notes\/([^/]+)\/share\/?$/);
+      if (noteShareMatch) {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        const noteId = pathIdSegment(noteShareMatch[1]!);
+        if (request.method === "GET") {
+          return getNoteShareStatus(env, request, uid, noteId);
+        }
+        if (request.method === "POST") {
+          return handleShareNote(request, env, uid, noteId);
+        }
+      }
+
+      // Note files routes (authenticated)
+      const noteFilesMatch = path.match(/^\/api\/notes\/([^/]+)\/files\/?$/);
+      if (noteFilesMatch) {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        const noteId = pathIdSegment(noteFilesMatch[1]!);
+        if (request.method === "GET") {
+          return listNoteFiles(env, request, uid, noteId);
+        }
+        if (request.method === "POST") {
+          return uploadNoteFiles(request, env, uid, noteId);
+        }
+      }
+
+      const noteFileItemMatch = path.match(/^\/api\/notes\/([^/]+)\/files\/([^/]+)\/?$/);
+      if (noteFileItemMatch) {
+        const uid = sessionUserId(request);
+        if (uid === null) {
+          return json(env, request, { error: "Unauthorized" }, { status: 401 });
+        }
+        const noteId = pathIdSegment(noteFileItemMatch[1]!);
+        const fileId = pathIdSegment(noteFileItemMatch[2]!);
+        if (request.method === "GET") {
+          return getNoteFile(env, request, uid, noteId, fileId);
+        }
+        if (request.method === "DELETE") {
+          return deleteNoteFile(env, request, uid, noteId, fileId);
+        }
+      }
+
       const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)\/?$/);
       if (noteIdMatch) {
         const uid = sessionUserId(request);
@@ -710,9 +880,13 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     "Cache-Control": "private, no-store",
   });
   h.append("Set-Cookie", sessionCookie(row.id, request));
-  for (const c of clearSessionCookies(request).slice(1)) h.append("Set-Cookie", c);
   return new Response(
-    JSON.stringify({ id: row.id, username: row.username, email: row.email }),
+    JSON.stringify({
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      token: String(row.id),
+    }),
     { headers: h },
   );
 }
@@ -771,9 +945,13 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     "Cache-Control": "private, no-store",
   });
   h.append("Set-Cookie", sessionCookie(row.id, request));
-  for (const c of clearSessionCookies(request).slice(1)) h.append("Set-Cookie", c);
   return new Response(
-    JSON.stringify({ id: row.id, username: row.username, email: row.email }),
+    JSON.stringify({
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      token: String(row.id),
+    }),
     { headers: h },
   );
 }
@@ -795,6 +973,7 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 }
 
 async function listNotes(env: Env, request: Request, userId: number): Promise<Response> {
+  await ensureDbTables(env.DB);
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   // Cap at 100: each note body is an R2 read. pageSize=1000 exceeds Worker subrequest limits (CF 1101).
@@ -811,10 +990,40 @@ async function listNotes(env: Env, request: Request, userId: number): Promise<Re
     .all<NoteRow>();
 
   const rows = results ?? [];
+
+  // Fetch files and shares for these notes in bulk
+  const { results: fileRows } = await env.DB.prepare(
+    "SELECT id, note_id, user_id, filename, path, size, content_type, r2_key, created_at FROM note_files WHERE user_id = ?"
+  ).bind(userId).all<NoteFileRow>();
+
+  const filesByNoteId: Record<string, any[]> = {};
+  for (const f of fileRows || []) {
+    if (!filesByNoteId[f.note_id]) filesByNoteId[f.note_id] = [];
+    filesByNoteId[f.note_id]!.push(fileResponse(f));
+  }
+
+  const { results: shareRows } = await env.DB.prepare(
+    "SELECT id, note_id, is_public FROM note_shares WHERE user_id = ?"
+  ).bind(userId).all<{ id: string; note_id: string; is_public: number }>();
+
+  const sharesByNoteId: Record<string, { shareId: string; isPublic: boolean; shareUrl: string }> = {};
+  for (const s of shareRows || []) {
+    sharesByNoteId[s.note_id] = {
+      shareId: s.id,
+      isPublic: Boolean(s.is_public),
+      shareUrl: `/share/${s.id}`,
+    };
+  }
+
   const withContent = await Promise.all(
     rows.map(async (row) => {
       const content = await readBodyContent(env.NOTES, row.r2_key);
-      return noteResponse(row, content);
+      const base = noteResponse(row, content);
+      return {
+        ...base,
+        files: filesByNoteId[row.id] || [],
+        share: sharesByNoteId[row.id] || null,
+      };
     }),
   );
 
@@ -984,8 +1193,22 @@ async function getNote(env: Env, request: Request, userId: number, id: string): 
   if (!row) {
     return json(env, request, { error: "not_found" }, { status: 404 });
   }
+  await ensureDbTables(env.DB);
   const content = await readBodyContent(env.NOTES, row.r2_key);
-  return json(env, request, noteResponse(row, content));
+  const { results: fileRows } = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE note_id = ? AND user_id = ? ORDER BY created_at ASC"
+  ).bind(id, userId).all<NoteFileRow>();
+
+  const share = await env.DB.prepare(
+    "SELECT * FROM note_shares WHERE note_id = ? AND user_id = ?"
+  ).bind(id, userId).first<{ id: string; is_public: number }>();
+
+  const base = noteResponse(row, content);
+  return json(env, request, {
+    ...base,
+    files: (fileRows || []).map(fileResponse),
+    share: share ? { shareId: share.id, isPublic: Boolean(share.is_public), shareUrl: `/share/${share.id}` } : null,
+  });
 }
 
 async function deleteNote(env: Env, request: Request, userId: number, id: string): Promise<Response> {
@@ -997,7 +1220,10 @@ async function deleteNote(env: Env, request: Request, userId: number, id: string
     return json(env, request, { error: "not_found" }, { status: 404 });
   }
 
+  await ensureDbTables(env.DB);
   await env.DB.prepare("DELETE FROM notes WHERE id = ? AND user_id = ?").bind(id, userId).run();
+  await env.DB.prepare("DELETE FROM note_files WHERE note_id = ? AND user_id = ?").bind(id, userId).run();
+  await env.DB.prepare("DELETE FROM note_shares WHERE note_id = ? AND user_id = ?").bind(id, userId).run();
   await deleteAllNoteObjects(env.NOTES, userId, id);
 
   return new Response(null, { status: 204, headers: corsHeaders(env, request) });
@@ -1109,6 +1335,419 @@ async function deleteNoteMedia(
   const key = r2MediaKey(String(userId), noteId, mediaId);
   await env.NOTES.delete(key);
   return new Response(null, { status: 204, headers: corsHeaders(env, request) });
+}
+
+async function uploadNoteFiles(
+  request: Request,
+  env: Env,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  await ensureDbTables(env.DB);
+
+  const contentType = request.headers.get("Content-Type") || "";
+  const uploadedFiles: Array<{
+    id: string;
+    noteId: string;
+    filename: string;
+    path: string;
+    size: number;
+    contentType: string;
+    createdAt: string;
+    downloadUrl: string;
+  }> = [];
+
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const files: File[] = [];
+    const paths: string[] = [];
+
+    let idx = 0;
+    for (const [key, value] of formData.entries()) {
+      if (typeof value !== "string" && value && typeof (value as any).arrayBuffer === "function") {
+        const file = value as unknown as File;
+        files.push(file);
+        const pathVal = formData.get(`path_${idx}`) || formData.get(`path_${file.name}`) || "";
+        paths.push(typeof pathVal === "string" ? pathVal : "");
+        idx++;
+      }
+    }
+
+    if (files.length === 0) {
+      return json(env, request, { error: "no_files" }, { status: 400 });
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      if (file.size > MAX_FILE_BYTES) {
+        return json(
+          env,
+          request,
+          { error: "file_too_large", filename: file.name, maxBytes: MAX_FILE_BYTES },
+          { status: 413 },
+        );
+      }
+      const fileId = crypto.randomUUID();
+      const filename = file.name || "unnamed";
+      const relPath = paths[i] || "";
+      const size = file.size;
+      const mime = file.type || "application/octet-stream";
+      const key = `${userId}/${noteId}/files/${fileId}/${encodeURIComponent(filename)}`;
+
+      const arrayBuf = await file.arrayBuffer();
+      await env.NOTES.put(key, arrayBuf, {
+        httpMetadata: {
+          contentType: mime,
+          contentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+        },
+      });
+
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `INSERT INTO note_files (id, note_id, user_id, filename, path, size, content_type, r2_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(fileId, noteId, userId, filename, relPath, size, mime, key, now)
+        .run();
+
+      uploadedFiles.push({
+        id: fileId,
+        noteId,
+        filename,
+        path: relPath,
+        size,
+        contentType: mime,
+        createdAt: now,
+        downloadUrl: `/api/notes/${noteId}/files/${fileId}`,
+      });
+    }
+
+    await env.DB.prepare("UPDATE notes SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      .bind(noteId, userId)
+      .run();
+
+    return json(env, request, { files: uploadedFiles }, { status: 201 });
+  }
+
+  // Single binary upload
+  const fileId = crypto.randomUUID();
+  const filename = decodeURIComponent(request.headers.get("X-Filename") || "file");
+  const relPath = decodeURIComponent(request.headers.get("X-Path") || "");
+  const mime = request.headers.get("Content-Type") || "application/octet-stream";
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength > MAX_FILE_BYTES) {
+    return json(env, request, { error: "file_too_large", maxBytes: MAX_FILE_BYTES }, { status: 413 });
+  }
+
+  const size = buf.byteLength;
+  const key = `${userId}/${noteId}/files/${fileId}/${encodeURIComponent(filename)}`;
+
+  await env.NOTES.put(key, buf, {
+    httpMetadata: {
+      contentType: mime,
+      contentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+    },
+  });
+
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO note_files (id, note_id, user_id, filename, path, size, content_type, r2_key, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(fileId, noteId, userId, filename, relPath, size, mime, key, now)
+    .run();
+
+  await env.DB.prepare("UPDATE notes SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+    .bind(noteId, userId)
+    .run();
+
+  uploadedFiles.push({
+    id: fileId,
+    noteId,
+    filename,
+    path: relPath,
+    size,
+    contentType: mime,
+    createdAt: now,
+    downloadUrl: `/api/notes/${noteId}/files/${fileId}`,
+  });
+
+  return json(env, request, { files: uploadedFiles }, { status: 201 });
+}
+
+async function listNoteFiles(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  await ensureDbTables(env.DB);
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE note_id = ? AND user_id = ? ORDER BY created_at ASC",
+  )
+    .bind(noteId, userId)
+    .all<NoteFileRow>();
+
+  const files = (results || []).map(fileResponse);
+  return json(env, request, { files });
+}
+
+async function getNoteFile(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+  fileId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  await ensureDbTables(env.DB);
+  const file = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE id = ? AND note_id = ? AND user_id = ?",
+  )
+    .bind(fileId, noteId, userId)
+    .first<NoteFileRow>();
+
+  if (!file) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const obj = await env.NOTES.get(file.r2_key);
+  if (!obj) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const h = corsHeaders(env, request, {
+    "Content-Type": file.content_type || "application/octet-stream",
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(file.filename)}"`,
+    "Content-Length": String(file.size),
+  });
+  return new Response(obj.body, { headers: h });
+}
+
+async function deleteNoteFile(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+  fileId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  await ensureDbTables(env.DB);
+  const file = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE id = ? AND note_id = ? AND user_id = ?",
+  )
+    .bind(fileId, noteId, userId)
+    .first<NoteFileRow>();
+
+  if (!file) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  await env.NOTES.delete(file.r2_key);
+  await env.DB.prepare("DELETE FROM note_files WHERE id = ?").bind(fileId).run();
+  return new Response(null, { status: 204, headers: corsHeaders(env, request) });
+}
+
+async function handleShareNote(
+  request: Request,
+  env: Env,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  const row = await assertNoteOwned(env, userId, noteId);
+  if (!row) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+  await ensureDbTables(env.DB);
+
+  let isPublic = 1;
+  try {
+    const b = (await request.json()) as { isPublic?: boolean };
+    if (b.isPublic === false) isPublic = 0;
+  } catch {
+    // default 1
+  }
+
+  const existing = await env.DB.prepare("SELECT * FROM note_shares WHERE note_id = ?")
+    .bind(noteId)
+    .first<{ id: string; note_id: string; is_public: number }>();
+
+  let shareId = existing?.id;
+  if (existing) {
+    await env.DB.prepare("UPDATE note_shares SET is_public = ? WHERE note_id = ?")
+      .bind(isPublic, noteId)
+      .run();
+  } else {
+    shareId = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    await env.DB.prepare(
+      "INSERT INTO note_shares (id, note_id, user_id, is_public, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+    )
+      .bind(shareId, noteId, userId, isPublic)
+      .run();
+  }
+
+  return json(env, request, {
+    shareId,
+    isPublic: Boolean(isPublic),
+    shareUrl: `/share/${shareId}`,
+  });
+}
+
+async function getNoteShareStatus(
+  env: Env,
+  request: Request,
+  userId: number,
+  noteId: string,
+): Promise<Response> {
+  await ensureDbTables(env.DB);
+  const share = await env.DB.prepare("SELECT * FROM note_shares WHERE note_id = ? AND user_id = ?")
+    .bind(noteId, userId)
+    .first<{ id: string; is_public: number }>();
+
+  return json(env, request, {
+    shareId: share?.id ?? null,
+    isPublic: Boolean(share?.is_public),
+    shareUrl: share?.id ? `/share/${share.id}` : null,
+  });
+}
+
+async function getPublicShare(
+  env: Env,
+  request: Request,
+  shareId: string,
+): Promise<Response> {
+  await ensureDbTables(env.DB);
+  const share = await env.DB.prepare(
+    "SELECT * FROM note_shares WHERE id = ? AND is_public = 1",
+  )
+    .bind(shareId)
+    .first<{ note_id: string; user_id: number; created_at: string }>();
+
+  if (!share) {
+    return json(env, request, { error: "share_not_found_or_private" }, { status: 404 });
+  }
+
+  const note = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(share.note_id)
+    .first<NoteRow>();
+
+  if (!note) {
+    return json(env, request, { error: "note_not_found" }, { status: 404 });
+  }
+
+  const content = await readBodyContent(env.NOTES, note.r2_key);
+
+  const { results: fileRows } = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE note_id = ? ORDER BY created_at ASC",
+  )
+    .bind(share.note_id)
+    .all<NoteFileRow>();
+
+  const files = (fileRows || []).map((f) => ({
+    id: f.id,
+    filename: f.filename,
+    path: f.path,
+    size: f.size,
+    contentType: f.content_type,
+    createdAt: f.created_at,
+    downloadUrl: `/api/public/shares/${shareId}/files/${f.id}`,
+  }));
+
+  const user = await env.DB.prepare("SELECT username FROM users WHERE id = ?")
+    .bind(note.user_id)
+    .first<{ username: string }>();
+
+  return json(env, request, {
+    note: noteResponse(note, content),
+    files,
+    author: user?.username ?? "Zenotes User",
+    shareId,
+  });
+}
+
+async function getPublicShareFile(
+  env: Env,
+  request: Request,
+  shareId: string,
+  fileId: string,
+): Promise<Response> {
+  await ensureDbTables(env.DB);
+  const share = await env.DB.prepare(
+    "SELECT * FROM note_shares WHERE id = ? AND is_public = 1",
+  )
+    .bind(shareId)
+    .first<{ note_id: string; user_id: number }>();
+
+  if (!share) {
+    return json(env, request, { error: "share_not_found" }, { status: 404 });
+  }
+
+  const file = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE id = ? AND note_id = ?",
+  )
+    .bind(fileId, share.note_id)
+    .first<NoteFileRow>();
+
+  if (!file) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const obj = await env.NOTES.get(file.r2_key);
+  if (!obj) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const h = corsHeaders(env, request, {
+    "Content-Type": file.content_type || "application/octet-stream",
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(file.filename)}"`,
+    "Content-Length": String(file.size),
+  });
+  return new Response(obj.body, { headers: h });
+}
+
+async function getPublicShareMedia(
+  env: Env,
+  request: Request,
+  shareId: string,
+  mediaId: string,
+): Promise<Response> {
+  await ensureDbTables(env.DB);
+  const share = await env.DB.prepare(
+    "SELECT * FROM note_shares WHERE id = ? AND is_public = 1",
+  )
+    .bind(shareId)
+    .first<{ note_id: string; user_id: number }>();
+
+  if (!share) {
+    return json(env, request, { error: "share_not_found" }, { status: 404 });
+  }
+
+  const key = r2MediaKey(String(share.user_id), share.note_id, mediaId);
+  const obj = await env.NOTES.get(key);
+  if (!obj) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const ct = obj.httpMetadata?.contentType || "application/octet-stream";
+  const h = corsHeaders(env, request, {
+    "Content-Type": ct,
+    "Cache-Control": "public, max-age=86400",
+  });
+  return new Response(obj.body, { headers: h });
 }
 
 async function reorderNotes(request: Request, env: Env, userId: number): Promise<Response> {

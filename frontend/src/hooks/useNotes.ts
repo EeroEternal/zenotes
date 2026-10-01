@@ -16,7 +16,7 @@ import {
   getLocalNote,
   type NoteInput,
 } from "@/offline/localNoteApi";
-import { db } from "@/offline/db";
+import { db, clearAllLocalData } from "@/offline/db";
 import { pullServerNotes } from "@/offline/notesSeed";
 
 const PINNED_CONTAINER_ID = "pinned";
@@ -92,12 +92,20 @@ function useNotesService() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Seed local DB from server on mount / when online.
-  // Partial pages are written as they arrive; failures retry so we don't stick at ~100 notes.
+  const meQuery = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: api.fetchAuthMe,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const isAuthenticated = Boolean(meQuery.data);
+
+  // Seed local DB from server on mount / when online, only when authenticated.
   const seedQuery = useQuery({
     queryKey: ["notes", "seed"],
     queryFn: async () => pullServerNotes(),
-    enabled: isOnline,
+    enabled: isOnline && (isAuthenticated || Boolean(api.getAuthToken())),
     staleTime: 2 * 60 * 1000,
     retry: 2,
     retryDelay: (n) => Math.min(8000, 1000 * 2 ** n),
@@ -330,6 +338,112 @@ function useNotesService() {
     [allNotes],
   );
 
+  const uploadFiles = useCallback(
+    async (noteId: string, files: File[], paths?: string[]) => {
+      const res = await api.uploadNoteFiles(noteId, files, paths);
+      const local = await db.notes.get(noteId);
+      if (local) {
+        const existingFiles = local.files || [];
+        await db.notes.update(noteId, { files: [...existingFiles, ...res.files] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      if (isOnline) {
+        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
+      }
+      return res;
+    },
+    [isOnline, queryClient],
+  );
+
+  const createNoteWithFiles = useCallback(
+    async (input: {
+      content?: string;
+      title?: string;
+      color?: NoteColor;
+      tags?: string[];
+      files: File[];
+      paths?: string[];
+    }) => {
+      if (!isAuthenticated && !api.getAuthToken()) {
+        toast.error("Please sign in to upload files or create notes");
+        return null;
+      }
+      const defaultTitle =
+        input.title ||
+        (input.paths?.[0] ? input.paths[0].split("/")[0] : input.files[0]?.name) ||
+        "Uploaded Note";
+      const defaultContent = input.content || `📎 Attached ${input.files.length} file(s)`;
+
+      const created = await api.createNote({
+        title: defaultTitle,
+        content: defaultContent,
+        color: input.color || "white",
+        tags: input.tags || [],
+      });
+
+      if (created?.id && input.files.length > 0) {
+        const uploadRes = await api.uploadNoteFiles(created.id, input.files, input.paths);
+        created.files = uploadRes.files;
+      }
+
+      if (created?.id) {
+        await db.notes.put({
+          id: created.id,
+          title: created.title ?? null,
+          content: created.content,
+          color: created.color || "white",
+          tags: created.tags || [],
+          pinned: Boolean(created.pinned),
+          position: created.position ?? 0,
+          createdAt: created.createdAt || new Date().toISOString(),
+          updatedAt: created.updatedAt || new Date().toISOString(),
+          syncStatus: "synced",
+          isDeleted: false,
+          files: created.files || [],
+          share: created.share || null,
+        });
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      if (isOnline) {
+        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
+      }
+      toast.success(input.files.length > 1 ? `Uploaded ${input.files.length} files` : "File uploaded");
+      return created;
+    },
+    [isAuthenticated, isOnline, queryClient],
+  );
+
+  const deleteFile = useCallback(
+    async (noteId: string, fileId: string) => {
+      await api.deleteNoteFile(noteId, fileId);
+      const local = await db.notes.get(noteId);
+      if (local && local.files) {
+        const updatedFiles = local.files.filter((f) => f.id !== fileId);
+        await db.notes.update(noteId, { files: updatedFiles });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      if (isOnline) {
+        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
+      }
+      toast.success("File deleted");
+    },
+    [isOnline, queryClient],
+  );
+
+  const toggleShare = useCallback(
+    async (noteId: string, isPublic: boolean) => {
+      const res = await api.toggleShareNote(noteId, isPublic);
+      const local = await db.notes.get(noteId);
+      if (local) {
+        await db.notes.update(noteId, { share: res });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      return res;
+    },
+    [queryClient],
+  );
+
   return {
     notes: paginatedNotes,
     pinnedNotes,
@@ -342,6 +456,12 @@ function useNotesService() {
     moveNote,
     importGoogleKeep,
     searchNotes,
+    uploadFiles,
+    createNoteWithFiles,
+    deleteFile,
+    toggleShare,
+    isAuthenticated,
+    currentUser: meQuery.data,
     isImportingKeep: importGoogleKeepMutation.isPending,
     isAddingNote: addNoteMutation.isPending,
     isLoading: seedQuery.isLoading,

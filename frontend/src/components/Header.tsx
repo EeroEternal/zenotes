@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
+import { clearAllLocalData } from "@/offline/db";
 import { toast } from "sonner";
 
 const ARGON2_TOAST =
@@ -100,9 +101,10 @@ export function Header({
 
   const loginMut = useMutation({
     mutationFn: () => api.login(loginUser.trim(), loginPass),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    onSuccess: async () => {
+      await clearAllLocalData();
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
       setLoginOpen(false);
       setLoginPass("");
       toast.success("Signed in");
@@ -117,9 +119,10 @@ export function Header({
         email: regEmail.trim(),
         password: loginPass,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    onSuccess: async () => {
+      await clearAllLocalData();
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
       setLoginOpen(false);
       setLoginPass("");
       setRegEmail("");
@@ -130,9 +133,11 @@ export function Header({
 
   const logoutMut = useMutation({
     mutationFn: api.logout,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    onSuccess: async () => {
+      await clearAllLocalData();
+      queryClient.setQueryData(["auth", "me"], null);
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
       toast.success("Signed out");
     },
   });

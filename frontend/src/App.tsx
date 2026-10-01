@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { NoteEditor } from "@/components/NoteEditor";
+import PublicShare from "./pages/PublicShare";
 import NotFound from "./pages/NotFound";
 
 import { NotesProvider } from "@/hooks/useNotes";
@@ -28,6 +29,8 @@ const App = () => (
             <Route path="/" element={<ResponsiveLayout />}>
               <Route path="note/:id" element={<NoteEditor />} />
             </Route>
+            <Route path="/share/:shareId" element={<PublicShare />} />
+            <Route path="/s/:shareId" element={<PublicShare />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

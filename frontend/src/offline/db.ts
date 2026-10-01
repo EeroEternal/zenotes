@@ -1,4 +1,5 @@
 import Dexie, { type Table } from "dexie";
+import type { NoteFile, NoteShare } from "@/types/note";
 
 export interface LocalNote {
   id: string;
@@ -12,6 +13,8 @@ export interface LocalNote {
   updatedAt: string;
   syncStatus: "synced" | "pending" | "syncing";
   isDeleted: boolean;
+  files?: NoteFile[];
+  share?: NoteShare | null;
 }
 
 export interface LocalImage {
@@ -47,3 +50,11 @@ class ZenotesDb extends Dexie {
 }
 
 export const db = new ZenotesDb();
+
+export async function clearAllLocalData(): Promise<void> {
+  await db.transaction("rw", [db.notes, db.images, db.syncQueue], async () => {
+    await db.notes.clear();
+    await db.images.clear();
+    await db.syncQueue.clear();
+  });
+}
