@@ -4,21 +4,20 @@
 > Notes are formatted in Markdown with support for multi-file and directory uploads.
 
 ## Master Global Token Authentication
-Agents can access all notes and directories without session cookies:
-- HTTP Header: `X-Global-Token: <token>`
-- Or HTTP Header: `Authorization: Bearer <token>`
-- Or URL Parameter: `?token=<token>`
-- Default master token: `zenotes_master_sec_token`
+Agents can access all notes and directories without session cookies by providing the master global token:
+- HTTP Header: `X-Global-Token: <YOUR_GLOBAL_TOKEN>`
+- Or HTTP Header: `Authorization: Bearer <YOUR_GLOBAL_TOKEN>`
+- Or URL Parameter: `?token=<YOUR_GLOBAL_TOKEN>`
 
 ## API Endpoints
-- **Search & List Notes**: `GET https://api.zenotes.site/api/global/notes?q={query}&token={token}`
-- **Get Note Markdown**: `GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token={token}`
-- **Download File**: `GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token={token}`
-- **Export Note ZIP**: `GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token={token}`
-- **Export All Notes & Directories ZIP**: `GET https://api.zenotes.site/api/global/export-all.zip?token={token}`
-- **Web UI Global Console**: `https://zenotes.site/global?token={token}`
+- **Search & List Notes**: `GET https://api.zenotes.site/api/global/notes?q={query}&token=<YOUR_GLOBAL_TOKEN>`
+- **Get Note Markdown**: `GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token=<YOUR_GLOBAL_TOKEN>`
+- **Download File**: `GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token=<YOUR_GLOBAL_TOKEN>`
+- **Export Note ZIP**: `GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token=<YOUR_GLOBAL_TOKEN>`
+- **Export All Notes & Directories ZIP**: `GET https://api.zenotes.site/api/global/export-all.zip?token=<YOUR_GLOBAL_TOKEN>`
+- **Web UI Global Console**: `https://zenotes.site/global?token=<YOUR_GLOBAL_TOKEN>`
 
 ## Quick Example
 ```bash
-curl -s -H "X-Global-Token: zenotes_master_sec_token" "https://api.zenotes.site/api/global/notes?q="
+curl -s -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" "https://api.zenotes.site/api/global/notes?q="
 ```

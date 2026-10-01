@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useRef } from "react";
 import { Header } from "./Header";
 import { NoteList } from "./NoteList";
+import { AgentPublicHome } from "./AgentPublicHome";
 import { useNotes } from "@/hooks/useNotes";
 import { toast } from "sonner";
 
@@ -9,7 +10,7 @@ export function ResponsiveLayout() {
   const { pathname } = useLocation();
   const isNoteRoute = pathname.startsWith("/note/");
   const keepInputRef = useRef<HTMLInputElement>(null);
-  const { searchQuery, setSearchQuery, importGoogleKeep, isImportingKeep } = useNotes();
+  const { searchQuery, setSearchQuery, importGoogleKeep, isImportingKeep, isAuthenticated } = useNotes();
 
   const handleImportKeepClick = () => keepInputRef.current?.click();
 
@@ -46,8 +47,14 @@ export function ResponsiveLayout() {
         onSearchChange={setSearchQuery}
       />
       <main className="flex-1 flex overflow-hidden">
-        {/* Note list: hidden when a note is selected (dialog takes full screen) */}
-        {!isNoteRoute && (
+        {/* Unauthenticated: show AI Agent Guide on zenotes.site */}
+        {!isNoteRoute && !isAuthenticated && (
+          <div className="w-full h-full overflow-auto">
+            <AgentPublicHome onSignInClick={() => window.dispatchEvent(new CustomEvent("open-auth-modal"))} />
+          </div>
+        )}
+        {/* Authenticated note workspace: clean note list without agent guide */}
+        {!isNoteRoute && isAuthenticated && (
           <div className="w-full h-full overflow-auto">
             <NoteList />
           </div>
