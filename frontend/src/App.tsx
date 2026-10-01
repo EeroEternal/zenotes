@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { NoteEditor } from "@/components/NoteEditor";
 import PublicShare from "./pages/PublicShare";
+import GlobalAccess from "./pages/GlobalAccess";
 import NotFound from "./pages/NotFound";
 
 import { NotesProvider } from "@/hooks/useNotes";
@@ -31,6 +32,7 @@ const App = () => (
             </Route>
             <Route path="/share/:shareId" element={<PublicShare />} />
             <Route path="/s/:shareId" element={<PublicShare />} />
+            <Route path="/global" element={<GlobalAccess />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

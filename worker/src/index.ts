@@ -2,6 +2,7 @@ import { argon2Verify } from "hash-wasm";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/web";
 import { MemoryFS } from "./memory-fs";
+import JSZip from "jszip";
 
 // Custom Agent implementation to replace missing Flue SDK parts
 class Agent {
@@ -92,6 +93,7 @@ export interface Env {
   OPENROUTER_OCR_MODEL?: string;
   /** default: mistralai/mistral-small-3.2-24b-instruct */
   OPENROUTER_SUMMARY_MODEL?: string;
+  GLOBAL_TOKEN?: string;
 }
 
 const ARGON2_MIGRATION_MSG =
@@ -118,7 +120,7 @@ function corsHeaders(env: Env, request: Request, extra?: HeadersInit): Headers {
     h.set("Access-Control-Allow-Credentials", "true");
   }
   h.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization");
+  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization, X-Global-Token");
   return h;
 }
 
@@ -295,6 +297,13 @@ async function ensureDbTables(db: D1Database): Promise<void> {
       `),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_shares_id ON note_shares(id);`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_note_shares_note_id ON note_shares(note_id);`),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `),
     ]);
     _tablesEnsured = true;
   } catch (e) {
@@ -805,6 +814,55 @@ export default {
         if (request.method === "DELETE") {
           return deleteNote(env, request, uid, id);
         }
+      }
+
+      // Global settings
+      if (path === "/api/settings/global-token") {
+        if (request.method === "GET") {
+          return handleGetGlobalToken(env, request);
+        }
+        if (request.method === "POST") {
+          return handleUpdateGlobalToken(env, request);
+        }
+      }
+
+      // Global batch export (ZIP of all notes, files, directories)
+      if (path === "/api/global/export-all.zip" && request.method === "GET") {
+        return exportGlobalAllZip(env, request);
+      }
+
+      // Global search & list notes
+      if (path === "/api/global/notes" && request.method === "GET") {
+        return listGlobalNotes(env, request);
+      }
+
+      // Global single note export (ZIP of note + its files/directories)
+      const globalNoteZipMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/export\.zip\/?$/);
+      if (globalNoteZipMatch && request.method === "GET") {
+        return exportGlobalNoteZip(env, request, pathIdSegment(globalNoteZipMatch[1]!));
+      }
+
+      // Global single note markdown download
+      const globalNoteMdMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/markdown\/?$/);
+      if (globalNoteMdMatch && request.method === "GET") {
+        return getGlobalNoteMarkdown(env, request, pathIdSegment(globalNoteMdMatch[1]!));
+      }
+
+      // Global single file download
+      const globalNoteFileMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/files\/([^/]+)\/?$/);
+      if (globalNoteFileMatch && request.method === "GET") {
+        return getGlobalNoteFile(
+          env,
+          request,
+          pathIdSegment(globalNoteFileMatch[1]!),
+          pathIdSegment(globalNoteFileMatch[2]!),
+        );
+      }
+
+      // Global single note detail
+      const globalNoteDetailMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/?$/);
+      if (globalNoteDetailMatch && request.method === "GET") {
+        return getGlobalNote(env, request, pathIdSegment(globalNoteDetailMatch[1]!));
       }
 
       return new Response(JSON.stringify({ error: "not_found" }), {
@@ -2183,5 +2241,455 @@ async function analyzeNote(
     mediaCount: mediaIds.length,
     appended: append,
     note: updated ? noteResponse(updated, content) : null,
+  });
+}
+
+// ==================== Global Master Token & Operations ====================
+
+async function getEffectiveGlobalToken(env: Env): Promise<string> {
+  try {
+    await ensureDbTables(env.DB);
+    const row = await env.DB.prepare("SELECT value FROM system_settings WHERE key = 'global_token'")
+      .first<{ value: string }>();
+    if (row && row.value && row.value.trim()) {
+      return row.value.trim();
+    }
+  } catch (e) {
+    console.error("Error reading global_token from DB:", e);
+  }
+  return env.GLOBAL_TOKEN?.trim() || "zenotes_master_sec_token";
+}
+
+async function verifyGlobalToken(request: Request, env: Env): Promise<boolean> {
+  const effective = await getEffectiveGlobalToken(env);
+  if (!effective) return false;
+
+  // 1. Check Header X-Global-Token
+  const customHeader = request.headers.get("X-Global-Token");
+  if (customHeader && customHeader.trim() === effective) return true;
+
+  // 2. Check Header Authorization: Bearer <token>
+  const auth = request.headers.get("Authorization");
+  if (auth && auth.startsWith("Bearer ")) {
+    const raw = auth.slice(7).trim();
+    if (raw === effective) return true;
+  }
+
+  // 3. Check query param: ?token= or ?global_token=
+  try {
+    const url = new URL(request.url);
+    const qToken = url.searchParams.get("token") || url.searchParams.get("global_token");
+    if (qToken && qToken.trim() === effective) return true;
+  } catch {}
+
+  return false;
+}
+
+async function handleGetGlobalToken(env: Env, request: Request): Promise<Response> {
+  const uid = sessionUserId(request);
+  const isGlobalAuth = await verifyGlobalToken(request, env);
+  if (uid === null && !isGlobalAuth) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+
+  const token = await getEffectiveGlobalToken(env);
+  return json(env, request, {
+    ok: true,
+    globalToken: token,
+  });
+}
+
+async function handleUpdateGlobalToken(env: Env, request: Request): Promise<Response> {
+  const uid = sessionUserId(request);
+  const isGlobalAuth = await verifyGlobalToken(request, env);
+  if (uid === null && !isGlobalAuth) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json()) as { token?: string };
+  const newToken = (body.token ?? "").trim();
+  if (!newToken || newToken.length < 4) {
+    return json(
+      env,
+      request,
+      { error: "Token must be at least 4 characters long" },
+      { status: 400 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  await env.DB.prepare(
+    `INSERT INTO system_settings (key, value, updated_at)
+     VALUES ('global_token', ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  )
+    .bind(newToken)
+    .run();
+
+  return json(env, request, {
+    ok: true,
+    message: "Global token updated successfully",
+    globalToken: newToken,
+  });
+}
+
+async function listGlobalNotes(env: Env, request: Request): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized", message: "Invalid or missing global token" }, { status: 401 });
+  }
+  await ensureDbTables(env.DB);
+  const url = new URL(request.url);
+  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+  const token = await getEffectiveGlobalToken(env);
+
+  const { results: notes } = await env.DB.prepare(
+    "SELECT n.*, u.username FROM notes n LEFT JOIN users u ON n.user_id = u.id ORDER BY n.updated_at DESC",
+  ).all<NoteRow & { username?: string }>();
+
+  const { results: allFiles } = await env.DB.prepare(
+    "SELECT * FROM note_files ORDER BY created_at ASC",
+  ).all<NoteFileRow>();
+
+  const filesByNoteId: Record<string, NoteFileRow[]> = {};
+  if (allFiles) {
+    for (const f of allFiles) {
+      if (!filesByNoteId[f.note_id]) filesByNoteId[f.note_id] = [];
+      filesByNoteId[f.note_id].push(f);
+    }
+  }
+
+  const list: any[] = [];
+  if (notes) {
+    for (const n of notes) {
+      const files = filesByNoteId[n.id] || [];
+      const fileSummaries = files.map((f) => ({
+        id: f.id,
+        filename: f.filename,
+        path: f.path,
+        size: f.size,
+        contentType: f.content_type,
+        createdAt: f.created_at,
+        downloadUrl: `/api/global/notes/${n.id}/files/${f.id}?token=${encodeURIComponent(token)}`,
+      }));
+
+      const directorySet = new Set<string>();
+      for (const f of files) {
+        if (f.path && f.path.includes("/")) {
+          const dir = f.path.substring(0, f.path.lastIndexOf("/"));
+          if (dir) directorySet.add(dir);
+        }
+      }
+      const directories = Array.from(directorySet);
+
+      let content = "";
+      let matched = !q;
+      if (q) {
+        const titleMatch = (n.title || "").toLowerCase().includes(q);
+        const tagMatch = (n.tags || "").toLowerCase().includes(q);
+        const authorMatch = (n.username || "").toLowerCase().includes(q);
+        const fileMatch = files.some(
+          (f) => f.filename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
+        );
+        if (titleMatch || tagMatch || authorMatch || fileMatch) {
+          matched = true;
+        } else {
+          content = await readBodyContent(env.NOTES, n.r2_key);
+          if (content.toLowerCase().includes(q)) {
+            matched = true;
+          }
+        }
+      }
+
+      if (matched) {
+        if (!content) {
+          content = await readBodyContent(env.NOTES, n.r2_key);
+        }
+        list.push({
+          ...noteResponse(n, content),
+          author: n.username || "Zenotes User",
+          files: fileSummaries,
+          directories,
+          downloadZipUrl: `/api/global/notes/${n.id}/export.zip?token=${encodeURIComponent(token)}`,
+          downloadMarkdownUrl: `/api/global/notes/${n.id}/markdown?token=${encodeURIComponent(token)}`,
+        });
+      }
+    }
+  }
+
+  return json(env, request, {
+    ok: true,
+    total: list.length,
+    notes: list,
+    exportAllZipUrl: `/api/global/export-all.zip?token=${encodeURIComponent(token)}`,
+  });
+}
+
+async function getGlobalNote(env: Env, request: Request, noteId: string): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+  await ensureDbTables(env.DB);
+  const note = await env.DB.prepare(
+    "SELECT n.*, u.username FROM notes n LEFT JOIN users u ON n.user_id = u.id WHERE n.id = ?",
+  )
+    .bind(noteId)
+    .first<NoteRow & { username?: string }>();
+
+  if (!note) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const token = await getEffectiveGlobalToken(env);
+  const content = await readBodyContent(env.NOTES, note.r2_key);
+  const { results: fileRows } = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE note_id = ? ORDER BY created_at ASC",
+  )
+    .bind(noteId)
+    .all<NoteFileRow>();
+
+  const files = (fileRows || []).map((f) => ({
+    id: f.id,
+    filename: f.filename,
+    path: f.path,
+    size: f.size,
+    contentType: f.content_type,
+    createdAt: f.created_at,
+    downloadUrl: `/api/global/notes/${noteId}/files/${f.id}?token=${encodeURIComponent(token)}`,
+  }));
+
+  const directorySet = new Set<string>();
+  for (const f of files) {
+    if (f.path && f.path.includes("/")) {
+      const dir = f.path.substring(0, f.path.lastIndexOf("/"));
+      if (dir) directorySet.add(dir);
+    }
+  }
+
+  return json(env, request, {
+    ...noteResponse(note, content),
+    author: note.username || "Zenotes User",
+    files,
+    directories: Array.from(directorySet),
+    downloadZipUrl: `/api/global/notes/${noteId}/export.zip?token=${encodeURIComponent(token)}`,
+    downloadMarkdownUrl: `/api/global/notes/${noteId}/markdown?token=${encodeURIComponent(token)}`,
+  });
+}
+
+async function getGlobalNoteMarkdown(
+  env: Env,
+  request: Request,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+  const note = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+
+  if (!note) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const content = await readBodyContent(env.NOTES, note.r2_key);
+  const filename = `note_${note.id.slice(0, 8)}.md`;
+  return new Response(content, {
+    headers: corsHeaders(env, request, {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    }),
+  });
+}
+
+async function getGlobalNoteFile(
+  env: Env,
+  request: Request,
+  noteId: string,
+  fileId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+  await ensureDbTables(env.DB);
+  const file = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE id = ? AND note_id = ?",
+  )
+    .bind(fileId, noteId)
+    .first<NoteFileRow>();
+
+  if (!file) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const obj = await env.NOTES.get(file.r2_key);
+  if (!obj) {
+    return json(env, request, { error: "file_not_found" }, { status: 404 });
+  }
+
+  const h = corsHeaders(env, request, {
+    "Content-Type": file.content_type || "application/octet-stream",
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(file.filename)}"`,
+    "Content-Length": String(file.size),
+  });
+  return new Response(obj.body, { headers: h });
+}
+
+async function exportGlobalNoteZip(
+  env: Env,
+  request: Request,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+  const note = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+
+  if (!note) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  await ensureDbTables(env.DB);
+  const content = await readBodyContent(env.NOTES, note.r2_key);
+  const { results: fileRows } = await env.DB.prepare(
+    "SELECT * FROM note_files WHERE note_id = ? ORDER BY created_at ASC",
+  )
+    .bind(noteId)
+    .all<NoteFileRow>();
+
+  const zip = new JSZip();
+  zip.file("note.md", content);
+
+  if (fileRows) {
+    for (const f of fileRows) {
+      try {
+        const obj = await env.NOTES.get(f.r2_key);
+        if (obj) {
+          const ab = await obj.arrayBuffer();
+          const fullPath = f.path ? f.path.replace(/^\/+/, "") : f.filename;
+          zip.file(fullPath, ab);
+        }
+      } catch (e) {
+        console.error("Error reading file for zip:", f.r2_key, e);
+      }
+    }
+  }
+
+  try {
+    const mediaPrefix = r2NotePrefix(String(note.user_id), note.id) + "media/";
+    const mediaList = await env.NOTES.list({ prefix: mediaPrefix });
+    for (const m of mediaList.objects) {
+      const mObj = await env.NOTES.get(m.key);
+      if (mObj) {
+        const mediaFilename = m.key.split("/").pop() || "image";
+        const ab = await mObj.arrayBuffer();
+        zip.file(`media/${mediaFilename}`, ab);
+      }
+    }
+  } catch (e) {
+    console.error("Error archiving media:", e);
+  }
+
+  const zipData = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const filename = `note_${note.id.slice(0, 8)}.zip`;
+  return new Response(zipData, {
+    headers: corsHeaders(env, request, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": String(zipData.byteLength),
+    }),
+  });
+}
+
+async function exportGlobalAllZip(
+  env: Env,
+  request: Request,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(env, request, { error: "unauthorized" }, { status: 401 });
+  }
+  await ensureDbTables(env.DB);
+
+  const { results: notes } = await env.DB.prepare(
+    "SELECT n.*, u.username FROM notes n LEFT JOIN users u ON n.user_id = u.id ORDER BY n.created_at ASC",
+  ).all<NoteRow & { username?: string }>();
+
+  const { results: allFiles } = await env.DB.prepare(
+    "SELECT * FROM note_files ORDER BY created_at ASC",
+  ).all<NoteFileRow>();
+
+  const filesByNoteId: Record<string, NoteFileRow[]> = {};
+  if (allFiles) {
+    for (const f of allFiles) {
+      if (!filesByNoteId[f.note_id]) filesByNoteId[f.note_id] = [];
+      filesByNoteId[f.note_id].push(f);
+    }
+  }
+
+  const zip = new JSZip();
+  const manifest: any[] = [];
+
+  if (notes) {
+    for (const n of notes) {
+      const dirName = `note_${n.id.slice(0, 8)}`;
+      const noteFolder = zip.folder(dirName);
+      const content = await readBodyContent(env.NOTES, n.r2_key);
+
+      if (noteFolder) {
+        noteFolder.file("note.md", content);
+
+        const files = filesByNoteId[n.id] || [];
+        for (const f of files) {
+          try {
+            const obj = await env.NOTES.get(f.r2_key);
+            if (obj) {
+              const ab = await obj.arrayBuffer();
+              const fullPath = f.path ? f.path.replace(/^\/+/, "") : f.filename;
+              noteFolder.file(fullPath, ab);
+            }
+          } catch (e) {
+            console.error("Error archiving file:", f.r2_key, e);
+          }
+        }
+
+        try {
+          const mediaPrefix = r2NotePrefix(String(n.user_id), n.id) + "media/";
+          const mediaList = await env.NOTES.list({ prefix: mediaPrefix });
+          for (const m of mediaList.objects) {
+            const mObj = await env.NOTES.get(m.key);
+            if (mObj) {
+              const mediaFilename = m.key.split("/").pop() || "image";
+              const ab = await mObj.arrayBuffer();
+              noteFolder.file(`media/${mediaFilename}`, ab);
+            }
+          }
+        } catch (e) {
+          console.error("Error archiving media in export all:", e);
+        }
+      }
+
+      manifest.push({
+        id: n.id,
+        author: n.username || "unknown",
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+        tags: n.tags,
+        fileCount: (filesByNoteId[n.id] || []).length,
+        folder: dirName,
+      });
+    }
+  }
+
+  zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+  const zipData = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const filename = `zenotes_all_export_${new Date().toISOString().slice(0, 10)}.zip`;
+  return new Response(zipData, {
+    headers: corsHeaders(env, request, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": String(zipData.byteLength),
+    }),
   });
 }

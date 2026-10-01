@@ -383,3 +383,86 @@ export async function downloadNoteFile(noteId: string, fileId: string, filename:
   URL.revokeObjectURL(url);
 }
 
+const GLOBAL_TOKEN_KEY = "zenotes_global_token";
+
+export function getSavedGlobalToken(): string {
+  try {
+    return localStorage.getItem(GLOBAL_TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setSavedGlobalToken(token: string): void {
+  try {
+    if (token) {
+      localStorage.setItem(GLOBAL_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(GLOBAL_TOKEN_KEY);
+    }
+  } catch {}
+}
+
+export async function fetchGlobalToken(): Promise<{ ok: boolean; globalToken: string }> {
+  const res = await fetchWithTimeout(`${API_BASE}/settings/global-token`, { method: "GET" });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function updateGlobalToken(token: string): Promise<{ ok: boolean; globalToken: string; message: string }> {
+  const res = await fetchWithTimeout(`${API_BASE}/settings/global-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export interface GlobalNoteItem extends Note {
+  author: string;
+  files: NoteFile[];
+  directories: string[];
+  downloadZipUrl: string;
+  downloadMarkdownUrl: string;
+}
+
+export interface GlobalNotesResponse {
+  ok: boolean;
+  total: number;
+  notes: GlobalNoteItem[];
+  exportAllZipUrl: string;
+}
+
+export async function searchGlobalNotes(token: string, q: string = ""): Promise<GlobalNotesResponse> {
+  const base = `${API_BASE}/global/notes`;
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  params.set("token", token.trim());
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "X-Global-Token": token.trim(),
+    },
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export function getGlobalExportAllUrl(token: string): string {
+  return `${API_BASE}/global/export-all.zip?token=${encodeURIComponent(token.trim())}`;
+}
+
+export function getGlobalNoteZipUrl(noteId: string, token: string): string {
+  return `${API_BASE}/global/notes/${encodeURIComponent(noteId)}/export.zip?token=${encodeURIComponent(token.trim())}`;
+}
+
+export function getGlobalNoteMarkdownUrl(noteId: string, token: string): string {
+  return `${API_BASE}/global/notes/${encodeURIComponent(noteId)}/markdown?token=${encodeURIComponent(token.trim())}`;
+}
+
+export function getGlobalFileDownloadUrl(noteId: string, fileId: string, token: string): string {
+  return `${API_BASE}/global/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token.trim())}`;
+}
+

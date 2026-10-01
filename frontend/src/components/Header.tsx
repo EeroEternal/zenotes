@@ -1,6 +1,7 @@
-import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone } from "lucide-react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { GlobalTokenDialog } from "./GlobalTokenDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +52,7 @@ export function Header({
 }: HeaderProps) {
   const queryClient = useQueryClient();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [globalTokenOpen, setGlobalTokenOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchDraft, setSearchDraft] = useState(searchQuery ?? "");
@@ -218,6 +220,15 @@ export function Header({
               Install
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setGlobalTokenOpen(true)}
+            className="h-9 w-9 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground"
+            title="全局令牌与打包下载"
+          >
+            <Key className="h-4 w-4" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center cursor-pointer border border-primary/10 hover:border-primary/30 hover:shadow-sm transition-all outline-none">
@@ -232,6 +243,16 @@ export function Header({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setGlobalTokenOpen(true);
+                }}
+              >
+                <Key className="mr-2 h-4 w-4" />
+                <span>全局令牌与打包下载</span>
+              </DropdownMenuItem>
               {!me && (
                 <DropdownMenuItem
                   className="cursor-pointer"
@@ -386,6 +407,7 @@ export function Header({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <GlobalTokenDialog open={globalTokenOpen} onOpenChange={setGlobalTokenOpen} />
     </header>
   );
 }
