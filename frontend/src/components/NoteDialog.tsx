@@ -11,6 +11,9 @@ import {
   Bold,
   Italic,
   List,
+  ListOrdered,
+  Copy,
+  Check,
   Trash2,
   Sparkles,
   Paperclip,
@@ -85,9 +88,9 @@ export function NoteDialog({
   onDelete,
   onTogglePin,
 }: NoteDialogProps) {
-  const [title, setTitle] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [tagsText, setTagsText] = useState('');
+  const [copiedContent, setCopiedContent] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +102,23 @@ export function NoteDialog({
   const editorWrapRef = useRef<HTMLDivElement>(null);
 
   const { uploadFiles, deleteFile } = useNotes();
+
+  const handleCopyContent = async () => {
+    if (!editor && !note) return;
+    const contentToCopy = editor ? tipTapHtmlToNoteContent(editor.getHTML()) : note?.content || '';
+    if (!contentToCopy.trim()) {
+      toast.info('笔记内容为空');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(contentToCopy);
+      setCopiedContent(true);
+      toast.success('已复制全部内容');
+      setTimeout(() => setCopiedContent(false), 2000);
+    } catch {
+      toast.error('复制失败');
+    }
+  };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
@@ -178,7 +198,6 @@ export function NoteDialog({
 
   useEffect(() => {
     if (!open || !note) return;
-    setTitle(note.title || '');
     setTagsText((note.tags || []).join(', '));
   }, [open, note?.id]);
 
@@ -195,16 +214,13 @@ export function NoteDialog({
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
-    const nextTitle = title.trim() || undefined;
     const nextContent = editor ? tipTapHtmlToNoteContent(editor.getHTML()) : note.content ?? '';
 
-    const titleChanged = nextTitle !== (note.title || undefined);
     const contentChanged = nextContent !== (note.content ?? '');
     const tagsChanged = !arraysEqual(tags, note.tags ?? []);
-    if (!titleChanged && !contentChanged && !tagsChanged) return;
+    if (!contentChanged && !tagsChanged) return;
 
     onUpdate(note.id, {
-      title: nextTitle,
       content: nextContent,
       tags,
     });
@@ -237,7 +253,6 @@ export function NoteDialog({
       if (result.note) {
         onUpdate(note.id, {
           content: result.note.content,
-          title: result.note.title ?? undefined,
           updatedAt: result.note.updatedAt,
         });
         if (editor) {
@@ -279,62 +294,26 @@ export function NoteDialog({
       >
         <DialogTitle className="sr-only">Edit note</DialogTitle>
 
-        <button
-          type="button"
-          onClick={() => handleDialogOpenChange(false)}
-          className="absolute top-4 right-4 p-2 rounded-xl hover:bg-foreground/8 transition-colors z-10"
-        >
-          <X className="w-5 h-5 text-muted-foreground" />
-        </button>
-
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title"
-          className="w-full bg-transparent text-xl font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none pr-10 mb-3"
-        />
-
-        <div
-          className="mb-2 flex max-w-3xl mx-auto flex-wrap items-center gap-0.5 rounded-xl border border-border/35 bg-foreground/[0.04] px-1.5 py-1"
-          onMouseDown={(e) => e.preventDefault()}
-        >
+        <div className="absolute top-4 right-4 flex items-center gap-1 z-10">
           <button
             type="button"
-            title="Bold"
-            className={`rounded-lg p-2 hover:bg-foreground/10 ${
-              editor?.isActive('bold') ? 'text-foreground bg-foreground/10' : 'text-muted-foreground'
-            }`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor?.chain().focus().toggleBold().run()}
+            onClick={handleCopyContent}
+            className="p-2 rounded-xl hover:bg-foreground/8 transition-colors text-muted-foreground hover:text-foreground"
+            title="复制全部内容"
           >
-            <Bold className="h-4 w-4" />
+            {copiedContent ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
           </button>
           <button
             type="button"
-            title="Italic"
-            className={`rounded-lg p-2 hover:bg-foreground/10 ${
-              editor?.isActive('italic') ? 'text-foreground bg-foreground/10' : 'text-muted-foreground'
-            }`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
+            onClick={() => handleDialogOpenChange(false)}
+            className="p-2 rounded-xl hover:bg-foreground/8 transition-colors text-muted-foreground hover:text-foreground"
+            title="关闭"
           >
-            <Italic className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            title="Bullet list"
-            className={`rounded-lg p-2 hover:bg-foreground/10 ${
-              editor?.isActive('bulletList') ? 'text-foreground bg-foreground/10' : 'text-muted-foreground'
-            }`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor?.chain().focus().toggleBulletList().run()}
-          >
-            <List className="h-4 w-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div ref={editorWrapRef} data-note-dialog-editor className={editorShellClass}>
+        <div ref={editorWrapRef} data-note-dialog-editor className={`${editorShellClass} mt-6`}>
           <EditorContent editor={editor} />
         </div>
 
@@ -508,7 +487,7 @@ export function NoteDialog({
         )}
 
         <div className="mt-6 pt-4 border-t border-border/30">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
           <button
             type="button"
             onClick={() => onTogglePin(note.id)}
@@ -532,6 +511,58 @@ export function NoteDialog({
           >
             <Palette className="w-4 h-4" />
           </button>
+
+          <div className="h-5 w-[1px] bg-border/60 mx-0.5" />
+
+          <button
+            type="button"
+            title="加粗"
+            className={`p-2.5 rounded-xl hover:bg-foreground/8 transition-colors ${
+              editor?.isActive('bold') ? 'text-foreground bg-foreground/10 font-bold' : 'text-muted-foreground'
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+          >
+            <Bold className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            title="斜体"
+            className={`p-2.5 rounded-xl hover:bg-foreground/8 transition-colors ${
+              editor?.isActive('italic') ? 'text-foreground bg-foreground/10 italic' : 'text-muted-foreground'
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+          >
+            <Italic className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            title="无序列表"
+            className={`p-2.5 rounded-xl hover:bg-foreground/8 transition-colors ${
+              editor?.isActive('bulletList') ? 'text-foreground bg-foreground/10' : 'text-muted-foreground'
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+          >
+            <List className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            title="有序列表"
+            className={`p-2.5 rounded-xl hover:bg-foreground/8 transition-colors ${
+              editor?.isActive('orderedList') ? 'text-foreground bg-foreground/10' : 'text-muted-foreground'
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+          >
+            <ListOrdered className="w-4 h-4" />
+          </button>
+
+          <div className="h-5 w-[1px] bg-border/60 mx-0.5" />
 
           <button
             type="button"

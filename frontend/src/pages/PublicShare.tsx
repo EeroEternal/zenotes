@@ -233,12 +233,6 @@ export default function PublicShare() {
               {formattedDate && <span>{formattedDate}</span>}
             </div>
 
-            {note.title && (
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight pt-1">
-                {note.title}
-              </h1>
-            )}
-
             {note.tags && note.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {note.tags.map((tag) => (

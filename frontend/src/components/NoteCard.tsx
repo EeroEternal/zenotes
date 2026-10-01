@@ -65,11 +65,6 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
         )}
 
         <div className="p-4 pb-11">
-          {note.title && (
-            <h3 className="font-semibold text-foreground pr-6 text-[15px] leading-snug mb-2">
-              {note.title}
-            </h3>
-          )}
           {preview.trim() ? (
             <div
               className={`

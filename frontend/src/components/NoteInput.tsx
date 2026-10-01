@@ -42,7 +42,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [tagsText, setTagsText] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -61,9 +60,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
     if (!list || list.length === 0) return;
     const files = Array.from(list);
     setPendingFiles((prev) => [...prev, ...files.map((file) => ({ file, path: file.name }))]);
-    if (!title.trim() && files[0]?.name) {
-      setTitle(files[0].name);
-    }
     setIsExpanded(true);
   };
 
@@ -77,10 +73,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
       path: (file as any).webkitRelativePath || file.name,
     }));
     setPendingFiles((prev) => [...prev, ...newItems]);
-    if (!title.trim() && newItems[0]?.path) {
-      const folderName = newItems[0].path.split('/')[0];
-      setTitle(folderName || '');
-    }
     setIsExpanded(true);
   };
 
@@ -90,7 +82,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
 
   const handleSubmit = async () => {
     if (submittingRef.current || isSubmitting || uploadingFiles) return;
-    if (content.trim() || title.trim() || pendingFiles.length > 0) {
+    if (content.trim() || pendingFiles.length > 0) {
       submittingRef.current = true;
       const tags = tagsText
         .split(',')
@@ -101,7 +93,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
         setUploadingFiles(true);
         try {
           await createNoteWithFiles({
-            title: title.trim() || undefined,
             content: content.trim() || undefined,
             tags,
             files: pendingFiles.map((p) => p.file),
@@ -115,7 +106,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
           submittingRef.current = false;
         }
       } else {
-        onAddNote(content.trim(), title.trim() || undefined, undefined, tags);
+        onAddNote(content.trim(), undefined, undefined, tags);
         handleClose();
         queueMicrotask(() => {
           submittingRef.current = false;
@@ -131,7 +122,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
   };
 
   const handleClose = () => {
-    setTitle('');
     setContent('');
     setTagsText('');
     setPendingFiles([]);
@@ -275,15 +265,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                     <X className="w-5 h-5 text-muted-foreground" />
                   </button>
 
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Title"
-                    className="w-full bg-transparent text-xl font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none pr-10 mb-4"
-                  />
-
                   <textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
@@ -291,7 +272,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                     placeholder="Take a note..."
                     rows={6}
                     autoFocus
-                    className="w-full bg-transparent text-foreground/85 placeholder:text-muted-foreground focus:outline-none resize-none text-[15px] leading-relaxed"
+                    className="w-full bg-transparent text-foreground/85 placeholder:text-muted-foreground focus:outline-none resize-none text-[15px] leading-relaxed pt-2"
                   />
 
                   {pendingFiles.length > 0 && (
@@ -356,7 +337,6 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                       setMediaUploading(true);
                       try {
                         const note = await api.createNote({
-                          title: title.trim() || undefined,
                           content: content.trim(),
                           tags,
                         });
