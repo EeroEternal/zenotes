@@ -2339,28 +2339,61 @@ async function listGlobalNotes(env: Env, request: Request): Promise<Response> {
   }
   await ensureDbTables(env.DB);
   const url = new URL(request.url);
-  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+  const q = (url.searchParams.get("q") || "").trim();
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+  const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit") ?? "50", 10)));
+  const offset = (page - 1) * limit;
   const token = await getEffectiveGlobalToken(env);
 
-  const { results: notes } = await env.DB.prepare(
-    "SELECT n.*, u.username FROM notes n LEFT JOIN users u ON n.user_id = u.id ORDER BY n.updated_at DESC",
-  ).all<NoteRow & { username?: string }>();
+  let notes: (NoteRow & { username?: string })[] = [];
+  if (q) {
+    const likeQ = `%${q}%`;
+    const { results } = await env.DB.prepare(
+      `SELECT n.*, u.username FROM notes n
+       LEFT JOIN users u ON n.user_id = u.id
+       WHERE (n.title LIKE ? OR n.tags LIKE ? OR u.username LIKE ?
+              OR n.id IN (SELECT note_id FROM note_files WHERE filename LIKE ? OR path LIKE ?))
+       ORDER BY n.updated_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+      .bind(likeQ, likeQ, likeQ, likeQ, likeQ, limit, offset)
+      .all<NoteRow & { username?: string }>();
+    notes = results || [];
+  } else {
+    const { results } = await env.DB.prepare(
+      `SELECT n.*, u.username FROM notes n
+       LEFT JOIN users u ON n.user_id = u.id
+       ORDER BY n.updated_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+      .bind(limit, offset)
+      .all<NoteRow & { username?: string }>();
+    notes = results || [];
+  }
 
-  const { results: allFiles } = await env.DB.prepare(
-    "SELECT * FROM note_files ORDER BY created_at ASC",
-  ).all<NoteFileRow>();
-
+  // Pre-fetch files for these specific notes in bulk
+  const noteIds = notes.map((n) => n.id);
   const filesByNoteId: Record<string, NoteFileRow[]> = {};
-  if (allFiles) {
-    for (const f of allFiles) {
-      if (!filesByNoteId[f.note_id]) filesByNoteId[f.note_id] = [];
-      filesByNoteId[f.note_id].push(f);
+  if (noteIds.length > 0) {
+    const placeholders = noteIds.map(() => "?").join(",");
+    const { results: allFiles } = await env.DB.prepare(
+      `SELECT * FROM note_files WHERE note_id IN (${placeholders}) ORDER BY created_at ASC`,
+    )
+      .bind(...noteIds)
+      .all<NoteFileRow>();
+
+    if (allFiles) {
+      for (const f of allFiles) {
+        if (!filesByNoteId[f.note_id]) filesByNoteId[f.note_id] = [];
+        filesByNoteId[f.note_id].push(f);
+      }
     }
   }
 
-  const list: any[] = [];
-  if (notes) {
-    for (const n of notes) {
+  // Fetch content concurrently
+  const list = await Promise.all(
+    notes.map(async (n) => {
+      const content = await readBodyContent(env.NOTES, n.r2_key);
       const files = filesByNoteId[n.id] || [];
       const fileSummaries = files.map((f) => ({
         id: f.id,
@@ -2381,40 +2414,16 @@ async function listGlobalNotes(env: Env, request: Request): Promise<Response> {
       }
       const directories = Array.from(directorySet);
 
-      let content = "";
-      let matched = !q;
-      if (q) {
-        const titleMatch = (n.title || "").toLowerCase().includes(q);
-        const tagMatch = (n.tags || "").toLowerCase().includes(q);
-        const authorMatch = (n.username || "").toLowerCase().includes(q);
-        const fileMatch = files.some(
-          (f) => f.filename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
-        );
-        if (titleMatch || tagMatch || authorMatch || fileMatch) {
-          matched = true;
-        } else {
-          content = await readBodyContent(env.NOTES, n.r2_key);
-          if (content.toLowerCase().includes(q)) {
-            matched = true;
-          }
-        }
-      }
-
-      if (matched) {
-        if (!content) {
-          content = await readBodyContent(env.NOTES, n.r2_key);
-        }
-        list.push({
-          ...noteResponse(n, content),
-          author: n.username || "Zenotes User",
-          files: fileSummaries,
-          directories,
-          downloadZipUrl: `/api/global/notes/${n.id}/export.zip?token=${encodeURIComponent(token)}`,
-          downloadMarkdownUrl: `/api/global/notes/${n.id}/markdown?token=${encodeURIComponent(token)}`,
-        });
-      }
-    }
-  }
+      return {
+        ...noteResponse(n, content),
+        author: n.username || "Zenotes User",
+        files: fileSummaries,
+        directories,
+        downloadZipUrl: `/api/global/notes/${n.id}/export.zip?token=${encodeURIComponent(token)}`,
+        downloadMarkdownUrl: `/api/global/notes/${n.id}/markdown?token=${encodeURIComponent(token)}`,
+      };
+    }),
+  );
 
   return json(env, request, {
     ok: true,
