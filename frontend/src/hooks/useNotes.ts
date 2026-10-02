@@ -18,6 +18,7 @@ import {
 } from "@/offline/localNoteApi";
 import { db, clearAllLocalData } from "@/offline/db";
 import { pullServerNotes } from "@/offline/notesSeed";
+import { exportAllToDirectory } from "@/lib/export-directory";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
@@ -268,15 +269,6 @@ function useNotesService() {
     },
   });
 
-  const importGoogleKeepMutation = useMutation({
-    mutationFn: (files: { raw: string }[]) => api.importGoogleKeep(files),
-    networkMode: "always",
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
-      // Force re-seed from server
-      queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
-    },
-  });
 
   const addNote = useCallback(
     (content: string, title?: string, color: NoteColor = "white", tags: string[] = []) => {
@@ -319,10 +311,35 @@ function useNotesService() {
     [allNotes, moveMutation],
   );
 
-  const importGoogleKeep = useCallback(
-    (files: { raw: string }[]) => importGoogleKeepMutation.mutateAsync(files),
-    [importGoogleKeepMutation],
-  );
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportAllNotesToDirectory = useCallback(async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      if (isOnline && (isAuthenticated || Boolean(api.getAuthToken()))) {
+        await pullServerNotes().catch((e) => console.warn("[export] pull server notes failed:", e));
+      }
+      const result = await exportAllToDirectory();
+      if (result.cancelled) {
+        return;
+      }
+      if (!result.success) {
+        toast.error(result.error || "Failed to export notes");
+        return;
+      }
+      if (result.mode === "directory") {
+        toast.success(`Successfully exported ${result.exportedCount} note(s) to directory`);
+      } else {
+        toast.success(`Exported ${result.exportedCount} note(s) as ZIP archive`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err || "Unknown error");
+      toast.error("Export failed: " + msg);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, isOnline, isAuthenticated]);
 
   const searchNotes = useCallback(
     (query: string) => {
@@ -454,7 +471,7 @@ function useNotesService() {
     deleteNote,
     togglePin,
     moveNote,
-    importGoogleKeep,
+    exportAllToDirectory: exportAllNotesToDirectory,
     searchNotes,
     uploadFiles,
     createNoteWithFiles,
@@ -462,7 +479,7 @@ function useNotesService() {
     toggleShare,
     isAuthenticated,
     currentUser: meQuery.data,
-    isImportingKeep: importGoogleKeepMutation.isPending,
+    isExporting,
     isAddingNote: addNoteMutation.isPending,
     isLoading: seedQuery.isLoading,
     isError: seedQuery.isError,

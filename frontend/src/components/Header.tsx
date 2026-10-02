@@ -1,4 +1,4 @@
-import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key } from "lucide-react";
+import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key, FolderDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GlobalTokenDialog } from "./GlobalTokenDialog";
@@ -38,15 +38,15 @@ function toastAuthError(err: unknown, fallback: string) {
 }
 
 interface HeaderProps {
-  onImportKeep: () => void;
-  isImportingKeep: boolean;
+  onExportDirectory?: () => void;
+  isExportingDirectory?: boolean;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
 }
 
 export function Header({
-  onImportKeep,
-  isImportingKeep,
+  onExportDirectory,
+  isExportingDirectory,
   searchQuery,
   onSearchChange,
 }: HeaderProps) {
@@ -285,21 +285,21 @@ export function Header({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
-                disabled={isImportingKeep || !me}
+                disabled={isExportingDirectory}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (me) onImportKeep();
+                  onExportDirectory?.();
                 }}
               >
-                {isImportingKeep ? (
+                {isExportingDirectory ? (
                   <>
                     <span className="mr-2 h-4 w-4 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
-                    <span>Importing…</span>
+                    <span>Exporting…</span>
                   </>
                 ) : (
                   <>
-                    <Download className="mr-2 h-4 w-4" />
-                    <span>Import Google Keep</span>
+                    <FolderDown className="mr-2 h-4 w-4" />
+                    <span>Export all to directory</span>
                   </>
                 )}
               </DropdownMenuItem>

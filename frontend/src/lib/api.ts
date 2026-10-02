@@ -50,12 +50,6 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-export type ImportGoogleKeepResult = {
-  totalFiles: number;
-  importedCount: number;
-  skippedCount: number;
-};
-
 export type CurrentUser = {
   id: number;
   username: string;
@@ -223,17 +217,6 @@ export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promi
     body: JSON.stringify({ pinned, orderedIds }),
   });
   await throwIfNotOk(res);
-}
-
-export async function importGoogleKeep(files: { raw: string }[]): Promise<ImportGoogleKeepResult> {
-  const res = await fetch(`${API_BASE}/notes/import/google-keep`, {
-    ...fetchOpts,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files }),
-  });
-  await throwIfNotOk(res);
-  return res.json();
 }
 
 export type AnalyzeNoteResult = {

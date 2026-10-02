@@ -83,6 +83,3 @@ wrangler d1 execute zenotes-db --remote --file=out/migration/d1-import.sql
    按输出运行 **`wrangler d1 execute zenotes-db --remote --command="..."`**，将库中密码改为与 Worker 一致的 **SHA256**；之后用新密码登录。  
 2. 仅在确有高 CPU、且需用**原明文密码**尝试校验 Argon2 时：在 `wrangler.jsonc` 的 `vars` 中设置 **`ALLOW_ARGON2_VERIFY": "true"`** 并重新部署（仍可能因参数过重在边缘失败）。
 
-## Google Keep 导入
-
-在浏览器中选择 Takeout 解压后的多个 `.json` 文件上传；不再依赖服务器本地目录。
