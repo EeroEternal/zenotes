@@ -21,6 +21,7 @@ import { ApiError } from '@/lib/api-error';
 import { insertMediaMarkdown } from '@/lib/note-media';
 import { cn } from '@/lib/utils';
 import { useNotes } from '@/hooks/useNotes';
+import { dragHasFiles, filesFromDrop } from '@/lib/drop-files';
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -51,23 +52,58 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
   const [mediaUploading, setMediaUploading] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<{ file: File; path?: string }[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
 
   const submittingRef = useRef(false);
 
+  const addDroppedFiles = async (data: DataTransfer) => {
+    const dropped = await filesFromDrop(data);
+    if (dropped.length === 0) return;
+    setPendingFiles((prev) => [...prev, ...dropped]);
+    setIsExpanded(true);
+  };
+
+  const onFileDragEnter = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  };
+
+  const onFileDragOver = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onFileDragLeave = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+
+  const onFileDrop = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setDragOver(false);
+    void addDroppedFiles(e.dataTransfer);
+  };
+
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!list || list.length === 0) return;
-    const files = Array.from(list);
+    if (files.length === 0) return;
     setPendingFiles((prev) => [...prev, ...files.map((file) => ({ file, path: file.name }))]);
     setIsExpanded(true);
   };
 
   const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!list || list.length === 0) return;
-    const files = Array.from(list);
+    if (files.length === 0) return;
     const newItems = files.map((file) => ({
       file,
       path: (file as any).webkitRelativePath || file.name,
@@ -179,10 +215,15 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
             onClick={() => setIsExpanded(true)}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            onDragEnter={onFileDragEnter}
+            onDragOver={onFileDragOver}
+            onDragLeave={onFileDragLeave}
+            onDrop={onFileDrop}
             className={cn(
               "w-full bg-card rounded-2xl border border-border/50 transition-all duration-300 cursor-text flex items-center justify-between",
               compact ? "p-4 gap-3" : "p-5 gap-4",
               isHovered ? "shadow-note-hover border-border -translate-y-0.5" : "shadow-note",
+              dragOver && "border-primary ring-2 ring-primary/40",
             )}
           >
             <div className="flex items-center gap-3">
@@ -245,7 +286,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
               <div
                 className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:items-center sm:p-6 animate-in fade-in duration-200"
                 onClick={() => {
-                  if (content.trim() || title.trim() || pendingFiles.length > 0) {
+                  if (content.trim() || pendingFiles.length > 0) {
                     void handleSubmit();
                   } else {
                     handleClose();
@@ -255,8 +296,15 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                 <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
 
                 <div
-                  className="relative my-6 w-full max-w-xl max-h-[min(90vh,44rem)] overflow-y-auto rounded-3xl border border-border/70 bg-card p-6 shadow-2xl ring-1 ring-foreground/10 animate-in zoom-in-95 duration-200"
+                  className={cn(
+                    "relative my-6 w-full max-w-xl max-h-[min(90vh,44rem)] overflow-y-auto rounded-3xl border bg-card p-6 shadow-2xl ring-1 ring-foreground/10 animate-in zoom-in-95 duration-200",
+                    dragOver ? "border-primary ring-2 ring-primary/40" : "border-border/70",
+                  )}
                   onClick={(e) => e.stopPropagation()}
+                  onDragEnter={onFileDragEnter}
+                  onDragOver={onFileDragOver}
+                  onDragLeave={onFileDragLeave}
+                  onDrop={onFileDrop}
                 >
                   <button
                     onClick={handleClose}
@@ -265,6 +313,9 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                     <X className="w-5 h-5 text-muted-foreground" />
                   </button>
 
+                  {dragOver && (
+                    <p className="mb-2 text-sm font-medium text-primary">松开即可添加文件</p>
+                  )}
                   <textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}

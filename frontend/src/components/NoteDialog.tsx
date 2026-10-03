@@ -27,6 +27,8 @@ import {
 import { noteContentToTipTapHtml, tipTapHtmlToNoteContent } from '@/lib/note-editor-serialization';
 import { createNoteEditorExtensions } from '@/lib/note-tiptap-extensions';
 import { noteMediaUrl } from '@/lib/note-media';
+import { dragHasFiles, filesFromDrop } from '@/lib/drop-files';
+import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { toast } from 'sonner';
@@ -96,6 +98,8 @@ export function NoteDialog({
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
   const [filesUploading, setFilesUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -121,10 +125,9 @@ export function NoteDialog({
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!list || list.length === 0 || !note) return;
-    const files = Array.from(list);
+    if (files.length === 0 || !note) return;
     setFilesUploading(true);
     try {
       await uploadFiles(note.id, files);
@@ -137,10 +140,9 @@ export function NoteDialog({
   };
 
   const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!list || list.length === 0 || !note) return;
-    const files = Array.from(list);
+    if (files.length === 0 || !note) return;
     const paths = files.map((f) => (f as any).webkitRelativePath || f.name);
     setFilesUploading(true);
     try {
@@ -151,6 +153,53 @@ export function NoteDialog({
     } finally {
       setFilesUploading(false);
     }
+  };
+
+  const uploadDroppedFiles = async (data: DataTransfer) => {
+    if (!note || filesUploading) return;
+    const dropped = await filesFromDrop(data);
+    if (dropped.length === 0) return;
+    setFilesUploading(true);
+    try {
+      await uploadFiles(
+        note.id,
+        dropped.map((item) => item.file),
+        dropped.map((item) => item.path),
+      );
+      toast.success(`已上传 ${dropped.length} 个文件`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : '文件上传失败');
+    } finally {
+      setFilesUploading(false);
+    }
+  };
+
+  const onFileDragEnter = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  };
+
+  const onFileDragOver = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onFileDragLeave = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+
+  const onFileDrop = (e: React.DragEvent) => {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setDragOver(false);
+    void uploadDroppedFiles(e.dataTransfer);
   };
 
   const handleDownloadAllZip = async () => {
@@ -280,11 +329,15 @@ export function NoteDialog({
     <Dialog open={open} onOpenChange={handleDialogOpenChange} modal={false}>
       <DialogContent
         overlayClassName="bg-black/55 backdrop-blur-[2px]"
-        className={`
-          ${colorClasses[note.color]}
-          w-full max-w-4xl rounded-3xl border border-border/70 p-6 shadow-2xl ring-1 ring-foreground/10
-          gap-0 max-h-[92vh] overflow-y-auto outline-none sm:rounded-3xl
-        `}
+        className={cn(
+          colorClasses[note.color],
+          "w-full max-w-4xl rounded-3xl border p-6 shadow-2xl ring-1 ring-foreground/10 gap-0 max-h-[92vh] overflow-y-auto outline-none sm:rounded-3xl",
+          dragOver ? "border-primary ring-2 ring-primary/40" : "border-border/70",
+        )}
+        onDragEnter={onFileDragEnter}
+        onDragOver={onFileDragOver}
+        onDragLeave={onFileDragLeave}
+        onDrop={onFileDrop}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           requestAnimationFrame(() => {
@@ -313,7 +366,12 @@ export function NoteDialog({
           </button>
         </div>
 
-        <div ref={editorWrapRef} data-note-dialog-editor className={`${editorShellClass} mt-6`}>
+        <div ref={editorWrapRef} data-note-dialog-editor className={`${editorShellClass} mt-6 relative`}>
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">
+              松开即可上传文件
+            </div>
+          )}
           <EditorContent editor={editor} />
         </div>
 

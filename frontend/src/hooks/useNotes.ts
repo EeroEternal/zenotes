@@ -363,13 +363,10 @@ function useNotesService() {
         const existingFiles = local.files || [];
         await db.notes.update(noteId, { files: [...existingFiles, ...res.files] });
       }
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
-      if (isOnline) {
-        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
-      }
+      void queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
       return res;
     },
-    [isOnline, queryClient],
+    [queryClient],
   );
 
   const createNoteWithFiles = useCallback(
@@ -421,14 +418,11 @@ function useNotesService() {
         });
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
-      if (isOnline) {
-        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
-      }
       toast.success(input.files.length > 1 ? `Uploaded ${input.files.length} files` : "File uploaded");
+      void queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
       return created;
     },
-    [isAuthenticated, isOnline, queryClient],
+    [isAuthenticated, queryClient],
   );
 
   const deleteFile = useCallback(

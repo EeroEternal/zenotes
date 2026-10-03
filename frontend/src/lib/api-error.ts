@@ -51,8 +51,8 @@ export async function messageFromResponse(res: Response): Promise<string> {
   return short.length > 0 ? short : fallbackMessage(res.status);
 }
 
-export async function throwIfNotOk(res: Response): Promise<void> {
-  if (res.ok) return;
+export async function throwIfNotOk(res: Response): Promise<Response> {
+  if (res.ok) return res;
   const msg = await messageFromResponse(res);
   throw new ApiError(msg);
 }
