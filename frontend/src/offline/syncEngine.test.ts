@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db } from "./db";
-import { createLocalNote, deleteLocalNote } from "./localNoteApi";
+import { createLocalNote, deleteLocalNote, updateLocalNote } from "./localNoteApi";
 import { processSyncQueue } from "./syncEngine";
 import * as api from "../lib/api";
 
@@ -68,6 +68,20 @@ describe("syncEngine", () => {
     await processSyncQueue();
 
     expect(createSpy).toHaveBeenCalledTimes(1);
+    expect((await db.syncQueue.toArray()).length).toBe(0);
+  });
+
+  it("sends the pinned flag to the server when a note is pinned", async () => {
+    const note = await createLocalNote({ content: "pin me" });
+    vi.spyOn(api, "fetchAuthMe").mockResolvedValue({ id: 1, username: "test", email: "test@test.com" });
+    vi.spyOn(api, "createNote").mockResolvedValue({ ...note } as any);
+    await processSyncQueue();
+
+    await updateLocalNote(note.id, { pinned: true });
+    const updateSpy = vi.spyOn(api, "updateNote").mockResolvedValue({} as any);
+    await processSyncQueue();
+
+    expect(updateSpy).toHaveBeenCalledWith(note.id, expect.objectContaining({ pinned: true }));
     expect((await db.syncQueue.toArray()).length).toBe(0);
   });
 

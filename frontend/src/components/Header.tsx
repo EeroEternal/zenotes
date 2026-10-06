@@ -144,9 +144,10 @@ export function Header({
 
   const logoutMut = useMutation({
     mutationFn: api.logout,
-    onSuccess: async () => {
-      await clearAllLocalData();
+    // onSettled：即便登出请求/本地清理出错，也必须让界面进入登出状态
+    onSettled: async () => {
       queryClient.setQueryData(["auth", "me"], null);
+      await clearAllLocalData().catch(() => {});
       await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       await queryClient.invalidateQueries({ queryKey: ["notes"] });
       toast.success("Signed out");

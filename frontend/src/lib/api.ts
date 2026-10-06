@@ -6,6 +6,15 @@ const AUTH_FETCH_MS = 25_000;
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 const TOKEN_KEY = "zenotes_auth_token";
+const SIGNED_OUT_KEY = "zenotes_signed_out";
+
+export function isSignedOut(): boolean {
+  try {
+    return localStorage.getItem(SIGNED_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function getAuthToken(): string | null {
   try {
@@ -19,6 +28,7 @@ export function setAuthToken(token: string | null): void {
   try {
     if (token) {
       localStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(SIGNED_OUT_KEY); // 登录成功即解除登出标记
     } else {
       localStorage.removeItem(TOKEN_KEY);
     }
@@ -60,6 +70,7 @@ export type CurrentUser = {
 export { ApiError };
 
 export async function fetchAuthMe(): Promise<CurrentUser | null> {
+  if (isSignedOut()) return null; // 本地已登出：即使 Cookie 还活着也不当作已登录
   const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { method: "GET" }, 15_000);
   if (res.status === 401) {
     setAuthToken(null);
@@ -67,8 +78,8 @@ export async function fetchAuthMe(): Promise<CurrentUser | null> {
   }
   await throwIfNotOk(res);
   const data = (await res.json()) as CurrentUser;
-  if (data?.id && !getAuthToken()) {
-    setAuthToken(String(data.id));
+  if (data?.token) {
+    setAuthToken(data.token); // 滑动续签
   }
   return data;
 }
@@ -90,11 +101,7 @@ export async function login(username: string, password: string): Promise<Current
   }
   await throwIfNotOk(res);
   const data = (await res.json()) as CurrentUser;
-  if (data?.token) {
-    setAuthToken(data.token);
-  } else if (data?.id) {
-    setAuthToken(String(data.id));
-  }
+  if (data?.token) setAuthToken(data.token);
   return data;
 }
 
@@ -119,19 +126,21 @@ export async function register(input: {
   }
   await throwIfNotOk(res);
   const data = (await res.json()) as CurrentUser;
-  if (data?.token) {
-    setAuthToken(data.token);
-  } else if (data?.id) {
-    setAuthToken(String(data.id));
-  }
+  if (data?.token) setAuthToken(data.token);
   return data;
 }
 
 export async function logout(): Promise<void> {
+  // 本地先行：无论服务端请求成功与否，这台设备都必须立刻登出
+  try {
+    localStorage.setItem(SIGNED_OUT_KEY, "1");
+  } catch {}
+  setAuthToken(null);
+  setSavedGlobalToken(""); // /global 页凭它展示全部笔记，登出必须一并作废
   try {
     await fetchWithTimeout(`${API_BASE}/auth/logout`, { method: "POST" }, 10_000);
-  } finally {
-    setAuthToken(null);
+  } catch {
+    // 服务端没收到也没关系：本地已登出；下次登录会重设 Cookie/Token
   }
 }
 
@@ -155,7 +164,7 @@ export async function fetchNotes(page = 1, pageSize = 50): Promise<NotesResponse
 }
 
 export async function fetchNote(id: string): Promise<Note> {
-  const res = await fetch(`${API_BASE}/notes/${encodeURIComponent(id)}`, fetchOpts);
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(id)}`, fetchOpts);
   await throwIfNotOk(res);
   return res.json();
 }
@@ -199,18 +208,18 @@ export async function uploadImage(id: string, file: File) {
 export async function rebuildNoteFromR2Media(
   noteId: string,
 ): Promise<{ noteId: string; imageCount: number }> {
-  const res = await fetch(`${API_BASE}/notes/${encodeURIComponent(noteId)}/rebuild-from-r2-media`, {
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/rebuild-from-r2-media`, {
     ...fetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
-  });
+  }, 60_000);
   await throwIfNotOk(res);
   return res.json() as Promise<{ noteId: string; imageCount: number }>;
 }
 
 export async function reorderNotes(pinned: boolean, orderedIds: string[]): Promise<void> {
-  const res = await fetch(`${API_BASE}/notes/reorder`, {
+  const res = await fetchWithTimeout(`${API_BASE}/notes/reorder`, {
     ...fetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -251,17 +260,46 @@ export async function analyzeNote(
   return res.json() as Promise<AnalyzeNoteResult>;
 }
 
-export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id: string }> {
+/** 大图先在浏览器缩到 ≤2048px 再上传：手机原图动辄好几 MB，上传慢且易中断 */
+async function shrinkImage(file: File): Promise<File> {
   const t = (file.type || "").trim().toLowerCase();
+  if (!t.startsWith("image/") || file.size <= 1_000_000) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const outType = t === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outType, 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name, { type: outType });
+  } catch {
+    return file; // 浏览器解码不了（如部分环境的 HEIC）就传原图
+  }
+}
+
+export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id: string }> {
+  const f = await shrinkImage(file);
+  const t = (f.type || "").trim().toLowerCase();
   /** 空类型时误标成 png 会导致服务端误判；交给 Worker 用魔数识别 */
   const headers: HeadersInit =
-    t.startsWith("image/") ? { "Content-Type": file.type.trim() } : { "Content-Type": "application/octet-stream" };
-  const res = await fetch(`${API_BASE}/notes/${noteId}/media`, {
+    t.startsWith("image/") ? { "Content-Type": f.type.trim() } : { "Content-Type": "application/octet-stream" };
+  // 必须走 fetchWithTimeout：它带 Authorization。仅靠 Cookie 时 Cookie 一丢就 401“未登录”，
+  // 且裸 fetch 无超时，弱网会一直转圈。
+  const res = await fetchWithTimeout(`${API_BASE}/notes/${noteId}/media`, {
     ...fetchOpts,
     method: "POST",
     headers,
-    body: file,
-  });
+    body: f,
+  }, 120_000);
   await throwIfNotOk(res);
   return res.json();
 }

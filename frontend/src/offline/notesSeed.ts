@@ -8,6 +8,8 @@ export async function mergeServerNotesIntoLocal(
   notes: Note[],
   opts: { purgeMissing?: boolean; knownServerIds?: Set<string> } = {},
 ) {
+  // 登出后，登出前已在飞行中的 seed 不得把笔记写回本地（复活）
+  if (api.isSignedOut()) return;
   const purgeMissing = opts.purgeMissing === true;
   const pendingCreates = new Set(
     (await db.syncQueue.where("type").equals("CREATE_NOTE").toArray()).map((op) => op.entityId),

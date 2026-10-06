@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Share2, Copy, Check, ExternalLink, Download, FileText, Loader2 } from "lucide-react";
 import { Note, NoteShare } from "@/types/note";
 import * as api from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "sonner";
 
 interface ShareDialogProps {
@@ -57,7 +58,7 @@ export function ShareDialog({ note, open, onOpenChange, onShareChange }: ShareDi
   const handleCopy = async () => {
     if (!publicUrl) return;
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await copyText(publicUrl);
       setCopied(true);
       toast.success("Share link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);

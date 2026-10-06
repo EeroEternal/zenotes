@@ -25,6 +25,7 @@ import {
   Archive,
 } from 'lucide-react';
 import { noteContentToTipTapHtml, tipTapHtmlToNoteContent } from '@/lib/note-editor-serialization';
+import { copyText } from '@/lib/clipboard';
 import { createNoteEditorExtensions } from '@/lib/note-tiptap-extensions';
 import { noteMediaUrl } from '@/lib/note-media';
 import { dragHasFiles, filesFromDrop } from '@/lib/drop-files';
@@ -115,7 +116,7 @@ export function NoteDialog({
       return;
     }
     try {
-      await navigator.clipboard.writeText(contentToCopy);
+      await copyText(contentToCopy);
       setCopiedContent(true);
       toast.success('已复制全部内容');
       setTimeout(() => setCopiedContent(false), 2000);

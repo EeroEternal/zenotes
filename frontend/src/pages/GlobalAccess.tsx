@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as api from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "sonner";
 
 export default function GlobalAccess() {
@@ -79,7 +80,7 @@ export default function GlobalAccess() {
 
   const handleCopy = async (id: string, text: string, msg: string = "已复制") => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopiedId(id);
       toast.success(msg);
       setTimeout(() => setCopiedId(null), 2000);

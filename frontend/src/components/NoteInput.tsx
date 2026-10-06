@@ -386,18 +386,21 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                         .map((t) => t.trim())
                         .filter(Boolean);
                       setMediaUploading(true);
+                      let createdNote: { id: string; content: string } | null = null;
                       try {
-                        const note = await api.createNote({
+                        createdNote = await api.createNote({
                           content: content.trim(),
                           tags,
                         });
-                        const { id: mediaId } = await api.uploadNoteMedia(note.id, file);
-                        const next = insertMediaMarkdown(note.content, mediaId);
-                        await api.updateNote(note.id, { content: next });
+                        const { id: mediaId } = await api.uploadNoteMedia(createdNote.id, file);
+                        const next = insertMediaMarkdown(createdNote.content, mediaId);
+                        await api.updateNote(createdNote.id, { content: next });
                         await queryClient.invalidateQueries({ queryKey: ["notes"] });
                         toast.success("Note saved with image");
                         handleClose();
                       } catch (err) {
+                        // 传图失败就删掉刚建的空笔记，否则重试一次多一条空笔记
+                        if (createdNote?.id) api.deleteNote(createdNote.id).catch(() => {});
                         toast.error(
                           err instanceof ApiError ? err.message : "Save or upload failed. Try again later.",
                         );

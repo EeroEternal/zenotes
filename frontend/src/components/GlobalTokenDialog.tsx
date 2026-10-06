@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Key, Copy, Check, ExternalLink, Download, Terminal } from "lucide-react";
 import * as api from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -51,7 +52,7 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
   const handleCopyToken = async () => {
     if (!token) return;
     try {
-      await navigator.clipboard.writeText(token);
+      await copyText(token);
       setCopied(true);
       toast.success("全局令牌已复制到剪贴板");
       setTimeout(() => setCopied(false), 2000);
@@ -84,7 +85,7 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
 
   const handleCopyCurl = async () => {
     try {
-      await navigator.clipboard.writeText(curlExample);
+      await copyText(curlExample);
       setCopiedCurl(true);
       toast.success("打包下载命令已复制");
       setTimeout(() => setCopiedCurl(false), 2000);

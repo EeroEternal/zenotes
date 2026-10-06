@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import * as api from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { NoteFile, NoteColor } from "@/types/note";
 import { toast } from "sonner";
 
@@ -83,7 +84,7 @@ export default function PublicShare() {
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await copyText(window.location.href);
       setCopied(true);
       toast.success("Link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);

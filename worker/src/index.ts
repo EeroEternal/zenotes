@@ -2,6 +2,7 @@ import { argon2Verify } from "hash-wasm";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/web";
 import { MemoryFS } from "./memory-fs";
+import { issueSessionToken, verifySessionToken } from "./session-token";
 import JSZip from "jszip";
 
 // Custom Agent implementation to replace missing Flue SDK parts
@@ -94,6 +95,8 @@ export interface Env {
   /** default: mistralai/mistral-small-3.2-24b-instruct */
   OPENROUTER_SUMMARY_MODEL?: string;
   GLOBAL_TOKEN?: string;
+  /** 会话签名密钥；不配置则首次使用时自动生成并存入 D1 system_settings */
+  SESSION_SECRET?: string;
 }
 
 const ARGON2_MIGRATION_MSG =
@@ -129,38 +132,27 @@ async function sha256Hex(password: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function sessionUserId(request: Request): number | null {
-  // 1. Check Authorization: Bearer <token>
+async function sessionUserId(request: Request, env: Env): Promise<number | null> {
+  // 1. Authorization: Bearer <token>  2. ?token=  3. Cookie，全部校验签名与过期
+  const candidates: string[] = [];
   const auth = request.headers.get("Authorization");
-  if (auth && auth.startsWith("Bearer ")) {
-    const raw = auth.slice(7).trim();
-    const id = parseInt(raw, 10);
-    if (!Number.isNaN(id) && id > 0) return id;
-  }
-
-  // 2. Check query param ?token=
+  if (auth && auth.startsWith("Bearer ")) candidates.push(auth.slice(7).trim());
   try {
-    const url = new URL(request.url);
-    const token = url.searchParams.get("token");
-    if (token) {
-      const id = parseInt(token, 10);
-      if (!Number.isNaN(id) && id > 0) return id;
-    }
+    const q = new URL(request.url).searchParams.get("token");
+    if (q) candidates.push(q.trim());
   } catch {}
-
-  // 3. Check Cookie (robust against multiple or empty values)
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const parts = cookieHeader.split(";");
-  for (const part of parts) {
+  // Cookie 可能有多个/空值，逐个取
+  for (const part of (request.headers.get("Cookie") || "").split(";")) {
     const eqIdx = part.indexOf("=");
     if (eqIdx !== -1) {
       const name = part.slice(0, eqIdx).trim();
       const val = part.slice(eqIdx + 1).trim();
-      if (name === SESSION_COOKIE && val) {
-        const id = parseInt(decodeURIComponent(val), 10);
-        if (!Number.isNaN(id) && id > 0) return id;
-      }
+      if (name === SESSION_COOKIE && val) candidates.push(decodeURIComponent(val));
     }
+  }
+  for (const c of candidates) {
+    const id = await verifySessionToken(c, await sessionSecret(env));
+    if (id !== null) return id;
   }
   return null;
 }
@@ -174,10 +166,39 @@ function isHttps(request: Request): boolean {
   return new URL(request.url).protocol === "https:";
 }
 
-function sessionCookie(userId: number, request: Request): string {
+/** 签名密钥：env.SESSION_SECRET 优先，否则首次使用生成一次存入 D1 */
+async function sessionSecret(env: Env): Promise<string> {
+  const fromEnv = env.SESSION_SECRET?.trim();
+  if (fromEnv) return fromEnv;
+  await ensureDbTables(env.DB);
+  const read = () =>
+    env.DB.prepare("SELECT value FROM system_settings WHERE key = 'session_secret'").first<{ value: string }>();
+  try {
+    const row = await read();
+    if (row?.value) return row.value;
+  } catch (e) {
+    console.error("read session_secret failed:", e);
+  }
+  const generated = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO system_settings (key, value, updated_at) VALUES ('session_secret', ?, datetime('now'))",
+  )
+    .bind(generated)
+    .run();
+  // 并发首次生成时以库里已落盘的为准
+  return (await read())?.value || generated;
+}
+
+async function issueToken(userId: number, env: Env): Promise<string> {
+  return issueSessionToken(userId, await sessionSecret(env));
+}
+
+function sessionCookie(token: string, request: Request): string {
   const maxAge = 60 * 60 * 24 * 30; // 30 days
   const secure = isHttps(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${userId}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=${maxAge}`;
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
 function clearSessionCookies(request: Request): string[] {
@@ -612,7 +633,7 @@ export default {
       }
 
       if (path === "/api/agent/run" && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           // For now, let's allow it for testing, or restrict to a specific user
           // return json(env, request, { error: "Unauthorized" }, { status: 401 });
@@ -657,14 +678,14 @@ export default {
       }
 
       if (path === "/api/notes" && request.method === "GET") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
         return listNotes(env, request, uid);
       }
       if (path === "/api/notes" && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -672,7 +693,7 @@ export default {
       }
 
       if (path === "/api/notes/reorder" && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -681,7 +702,7 @@ export default {
 
       const rebuildMatch = path.match(/^\/api\/notes\/([^/]+)\/rebuild-from-r2-media\/?$/);
       if (rebuildMatch && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -690,7 +711,7 @@ export default {
 
       const analyzeMatch = path.match(/^\/api\/notes\/([^/]+)\/analyze\/?$/);
       if (analyzeMatch && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -699,7 +720,7 @@ export default {
 
       const mediaUploadMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/?$/);
       if (mediaUploadMatch && request.method === "POST") {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -708,7 +729,7 @@ export default {
 
       const mediaItemMatch = path.match(/^\/api\/notes\/([^/]+)\/media\/([^/]+)\/?$/);
       if (mediaItemMatch) {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         const noteId = pathIdSegment(mediaItemMatch[1]!);
         const mediaId = pathIdSegment(mediaItemMatch[2]!);
         if (request.method === "GET") {
@@ -751,7 +772,7 @@ export default {
       // Note share routes (authenticated)
       const noteShareMatch = path.match(/^\/api\/notes\/([^/]+)\/share\/?$/);
       if (noteShareMatch) {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -767,7 +788,7 @@ export default {
       // Note files routes (authenticated)
       const noteFilesMatch = path.match(/^\/api\/notes\/([^/]+)\/files\/?$/);
       if (noteFilesMatch) {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -782,7 +803,7 @@ export default {
 
       const noteFileItemMatch = path.match(/^\/api\/notes\/([^/]+)\/files\/([^/]+)\/?$/);
       if (noteFileItemMatch) {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -798,7 +819,7 @@ export default {
 
       const noteIdMatch = path.match(/^\/api\/notes\/([^/]+)\/?$/);
       if (noteIdMatch) {
-        const uid = sessionUserId(request);
+        const uid = await sessionUserId(request, env);
         if (uid === null) {
           return json(env, request, { error: "Unauthorized" }, { status: 401 });
         }
@@ -935,13 +956,14 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     "Content-Type": "application/json",
     "Cache-Control": "private, no-store",
   });
-  h.append("Set-Cookie", sessionCookie(row.id, request));
+  const token = await issueToken(row.id, env);
+  h.append("Set-Cookie", sessionCookie(token, request));
   return new Response(
     JSON.stringify({
       id: row.id,
       username: row.username,
       email: row.email,
-      token: String(row.id),
+      token,
     }),
     { headers: h },
   );
@@ -1000,20 +1022,21 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     "Content-Type": "application/json",
     "Cache-Control": "private, no-store",
   });
-  h.append("Set-Cookie", sessionCookie(row.id, request));
+  const token = await issueToken(row.id, env);
+  h.append("Set-Cookie", sessionCookie(token, request));
   return new Response(
     JSON.stringify({
       id: row.id,
       username: row.username,
       email: row.email,
-      token: String(row.id),
+      token,
     }),
     { headers: h },
   );
 }
 
 async function handleMe(request: Request, env: Env): Promise<Response> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request, env);
   if (userId === null) {
     return json(env, request, { error: "Unauthorized" }, { status: 401 });
   }
@@ -1025,7 +1048,13 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
   if (!row) {
     return json(env, request, { error: "Unauthorized" }, { status: 401 });
   }
-  return json(env, request, { id: row.id, username: row.username, email: row.email });
+  return json(env, request, {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    // 顺带续签（滑动过期），前端会存下新 token
+    token: await issueToken(row.id, env),
+  });
 }
 
 async function listNotes(env: Env, request: Request, userId: number): Promise<Response> {
@@ -1106,7 +1135,7 @@ async function listNotes(env: Env, request: Request, userId: number): Promise<Re
 async function createNote(request: Request, env: Env, userId: number): Promise<Response> {
   const body = (await request.json()) as {
     id?: string;
-    title?: string;
+    title?: string | null;
     content?: string;
     color?: string;
     tags?: string[];
@@ -1148,10 +1177,10 @@ async function createNote(request: Request, env: Env, userId: number): Promise<R
 
   const ins = await env.DB.prepare(
     `INSERT INTO notes (id, user_id, title, color, tags, pinned, position, r2_key, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now'), datetime('now'))
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
      RETURNING id, user_id, title, color, tags, pinned, position, r2_key, created_at, updated_at`,
   )
-    .bind(id, userId, title, color, tagsJson, position, r2Key)
+    .bind(id, userId, title, color, tagsJson, isPinned, position, r2Key)
     .first<NoteRow>();
 
   if (!ins) {
@@ -1177,7 +1206,7 @@ async function updateNote(
   id: string,
 ): Promise<Response> {
   const body = (await request.json()) as {
-    title?: string;
+    title?: string | null;
     content?: string;
     color?: string;
     tags?: string[];
@@ -1208,7 +1237,7 @@ async function updateNote(
 
   let newTitle: string | null = existing.title;
   if (body.title !== undefined) {
-    const t = body.title.trim();
+    const t = typeof body.title === "string" ? body.title.trim() : "";
     newTitle = t.length > 0 ? t : null;
   }
 
@@ -1219,7 +1248,7 @@ async function updateNote(
     tagsJson = JSON.stringify(body.tags);
   }
 
-  const contentUpdate = body.content !== undefined ? body.content.trim() : null;
+  const contentUpdate = typeof body.content === "string" ? body.content.trim() : null;
 
   const updated = await env.DB.prepare(
     `UPDATE notes SET title = ?, color = ?, tags = ?, pinned = ?, position = ?, updated_at = datetime('now')
@@ -2130,7 +2159,7 @@ async function verifyGlobalToken(request: Request, env: Env): Promise<boolean> {
 }
 
 async function handleGetGlobalToken(env: Env, request: Request): Promise<Response> {
-  const uid = sessionUserId(request);
+  const uid = await sessionUserId(request, env);
   const isGlobalAuth = await verifyGlobalToken(request, env);
   if (uid === null && !isGlobalAuth) {
     return json(env, request, { error: "unauthorized" }, { status: 401 });
@@ -2144,7 +2173,7 @@ async function handleGetGlobalToken(env: Env, request: Request): Promise<Respons
 }
 
 async function handleUpdateGlobalToken(env: Env, request: Request): Promise<Response> {
-  const uid = sessionUserId(request);
+  const uid = await sessionUserId(request, env);
   const isGlobalAuth = await verifyGlobalToken(request, env);
   if (uid === null && !isGlobalAuth) {
     return json(env, request, { error: "unauthorized" }, { status: 401 });

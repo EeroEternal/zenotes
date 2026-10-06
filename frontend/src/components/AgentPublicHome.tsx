@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "sonner";
 
 interface AgentPublicHomeProps {
@@ -32,7 +33,7 @@ export function AgentPublicHome({ onSignInClick }: AgentPublicHomeProps) {
 
   const handleCopy = async (key: string, text: string, msg: string = "已复制到剪贴板") => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopiedKey(key);
       toast.success(msg);
       setTimeout(() => setCopiedKey(null), 2000);
