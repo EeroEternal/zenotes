@@ -126,7 +126,7 @@ export function NoteDialog({
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const files = Array.from(e.target.files ?? []); // 必须先取走：清空 value 会把 FileList 清掉
     e.target.value = '';
     if (files.length === 0 || !note) return;
     setFilesUploading(true);
@@ -141,7 +141,7 @@ export function NoteDialog({
   };
 
   const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const files = Array.from(e.target.files ?? []); // 同上：先取走再清 value
     e.target.value = '';
     if (files.length === 0 || !note) return;
     const paths = files.map((f) => (f as any).webkitRelativePath || f.name);

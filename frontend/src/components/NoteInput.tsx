@@ -93,7 +93,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const files = Array.from(e.target.files ?? []); // 必须先取走：清空 value 会把 FileList 清掉
     e.target.value = '';
     if (files.length === 0) return;
     setPendingFiles((prev) => [...prev, ...files.map((file) => ({ file, path: file.name }))]);
@@ -101,7 +101,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
   };
 
   const handleFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const files = Array.from(e.target.files ?? []); // 同上：先取走再清 value
     e.target.value = '';
     if (files.length === 0) return;
     const newItems = files.map((file) => ({
