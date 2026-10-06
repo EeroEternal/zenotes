@@ -327,25 +327,29 @@ export async function uploadNoteFiles(
   files: File[],
   paths?: string[],
 ): Promise<{ files: NoteFile[] }> {
-  const formData = new FormData();
-  files.forEach((f, idx) => {
-    formData.append(`file_${idx}`, f);
-    if (paths && paths[idx]) {
-      formData.append(`path_${idx}`, paths[idx]!);
+  const uploaded: NoteFile[] = [];
+  // 逐个文件发请求：一次请求塞全部文件会超出 Worker 单请求子请求上限，
+  // 多文件/目录传到一半就失败，且已传的文件已在服务端保存
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    const formData = new FormData();
+    formData.append(`file_0`, file);
+    if (paths && paths[i]) formData.append(`path_0`, paths[i]!);
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        `${API_BASE}/notes/${encodeURIComponent(noteId)}/files`,
+        { method: "POST", body: formData },
+        sizeTimeoutMs(file.size),
+      );
+    } catch (e) {
+      return rethrowAbort(e);
     }
-  });
-  const bytes = files.reduce((sum, f) => sum + f.size, 0);
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/files`, {
-      method: "POST",
-      body: formData,
-    }, sizeTimeoutMs(bytes));
-  } catch (e) {
-    return rethrowAbort(e);
+    await throwIfNotOk(res);
+    const data = (await res.json()) as { files?: NoteFile[] };
+    uploaded.push(...(data.files ?? []));
   }
-  await throwIfNotOk(res);
-  return res.json();
+  return { files: uploaded };
 }
 
 export async function fetchNoteFiles(noteId: string): Promise<{ files: NoteFile[] }> {

@@ -164,6 +164,18 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
     setIsExpanded(false);
   };
 
+  // 拖拽文件/目录到笔记区
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const list = e.dataTransfer?.files;
+    if (!list || list.length === 0) return;
+    setPendingFiles((prev) => [
+      ...prev,
+      ...Array.from(list).map((file) => ({ file, path: (file as any).webkitRelativePath || file.name })),
+    ]);
+    setIsExpanded(true);
+  };
+
   // Escape key to close when expanded
   useEffect(() => {
     if (!isExpanded) return;
@@ -210,7 +222,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
       />
 
       {!isExpanded ? (
-        <div className={cn("w-full", className)}>
+        <div className={cn("w-full", className)} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
           <div
             onClick={() => setIsExpanded(true)}
             onMouseEnter={() => setIsHovered(true)}
@@ -285,6 +297,11 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
             createPortal(
               <div
                 className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:items-center sm:p-6 animate-in fade-in duration-200"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.stopPropagation();
+                  handleDrop(e);
+                }}
                 onClick={() => {
                   if (content.trim() || pendingFiles.length > 0) {
                     void handleSubmit();
