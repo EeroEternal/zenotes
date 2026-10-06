@@ -470,7 +470,16 @@ export function NoteDialog({
                     key={f.id}
                     className="flex items-center justify-between p-2 rounded-xl bg-foreground/[0.04] border border-border/40 hover:bg-foreground/[0.07] transition-colors group text-xs"
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        api.downloadNoteFile(note.id, f.id, f.filename).catch((e: unknown) =>
+                          toast.error(e instanceof ApiError ? e.message : '下载失败，请稍后重试'),
+                        );
+                      }}
+                      className="flex items-center gap-2 min-w-0 flex-1 mr-2 text-left cursor-pointer"
+                      title="下载文件"
+                    >
                       {isFolderItem ? (
                         <Folder className="w-4 h-4 text-amber-500 shrink-0" />
                       ) : (
@@ -484,7 +493,7 @@ export function NoteDialog({
                           {formatFileSize(f.size)}
                         </p>
                       </div>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
