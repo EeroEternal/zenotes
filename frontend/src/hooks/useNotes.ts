@@ -18,11 +18,20 @@ import {
 } from "@/offline/localNoteApi";
 import { db, clearAllLocalData } from "@/offline/db";
 import { pullServerNotes } from "@/offline/notesSeed";
-import { exportAllToDirectory } from "@/lib/export-directory";
 
 const PINNED_CONTAINER_ID = "pinned";
 const UNPINNED_CONTAINER_ID = "unpinned";
 const PAGE_SIZE = 50;
+
+/** 等浏览器空闲（或兜底定时）再做后台数据加载 */
+function whenIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: unknown) => void })
+      .requestIdleCallback;
+    if (ric) ric(() => resolve(), { timeout: 2000 });
+    else setTimeout(resolve, 1500);
+  });
+}
 
 function sortPosition(n: Note): number {
   return Number.isFinite(n.position) ? n.position : 0;
@@ -100,12 +109,18 @@ function useNotesService() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const isAuthenticated = Boolean(meQuery.data);
+  // 本地会话先行：笔记存在 IndexedDB 里，不必等 /auth/me 网络往返就能出首屏；
+  // me 返回 401 时 fetchAuthMe 会清掉 token，自动降级回登录页
+  const isAuthenticated = Boolean(meQuery.data) || (!api.isSignedOut() && Boolean(api.getAuthToken()));
 
   // Seed local DB from server on mount / when online, only when authenticated.
   const seedQuery = useQuery({
     queryKey: ["notes", "seed"],
-    queryFn: async () => pullServerNotes(),
+    // 等浏览器空闲再拉服务端数据，把带宽/CPU 让给首屏
+    queryFn: async () => {
+      await whenIdle();
+      return pullServerNotes();
+    },
     enabled: isOnline && (isAuthenticated || Boolean(api.getAuthToken())),
     staleTime: 2 * 60 * 1000,
     retry: 2,
@@ -320,6 +335,7 @@ function useNotesService() {
       if (isOnline && (isAuthenticated || Boolean(api.getAuthToken()))) {
         await pullServerNotes().catch((e) => console.warn("[export] pull server notes failed:", e));
       }
+      const { exportAllToDirectory } = await import("@/lib/export-directory"); // 用到才加载 jszip
       const result = await exportAllToDirectory();
       if (result.cancelled) {
         return;
