@@ -136,7 +136,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
           });
           handleClose();
         } catch (e) {
-          toast.error(e instanceof ApiError ? e.message : '创建笔记并上传文件失败');
+          toast.error(e instanceof ApiError ? e.message : `创建笔记并上传文件失败：${e instanceof Error ? e.message : String(e)}`);
         } finally {
           setUploadingFiles(false);
           submittingRef.current = false;
@@ -419,7 +419,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                         // 传图失败就删掉刚建的空笔记，否则重试一次多一条空笔记
                         if (createdNote?.id) api.deleteNote(createdNote.id).catch(() => {});
                         toast.error(
-                          err instanceof ApiError ? err.message : "Save or upload failed. Try again later.",
+                          err instanceof ApiError ? err.message : `保存或上传失败：${err instanceof Error ? err.message : String(err)}`,
                         );
                       } finally {
                         setMediaUploading(false);

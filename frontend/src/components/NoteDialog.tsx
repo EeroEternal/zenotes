@@ -134,7 +134,7 @@ export function NoteDialog({
       await uploadFiles(note.id, files);
       toast.success(`已上传 ${files.length} 个文件`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : '文件上传失败');
+      toast.error(err instanceof ApiError ? err.message : `文件上传失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setFilesUploading(false);
     }
@@ -150,7 +150,7 @@ export function NoteDialog({
       await uploadFiles(note.id, files, paths);
       toast.success(`已上传目录中的 ${files.length} 个文件`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : '目录上传失败');
+      toast.error(err instanceof ApiError ? err.message : `目录上传失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setFilesUploading(false);
     }
@@ -169,7 +169,7 @@ export function NoteDialog({
       );
       toast.success(`已上传 ${dropped.length} 个文件`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : '文件上传失败');
+      toast.error(err instanceof ApiError ? err.message : `文件上传失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setFilesUploading(false);
     }
