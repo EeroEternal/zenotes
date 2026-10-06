@@ -293,7 +293,7 @@ export async function exportAllToDirectory(options: ExportOptions = {}): Promise
     for (const f of files) {
       try {
         const downloadUrl = api.getNoteFileDownloadUrl(note.id, f.id);
-        const res = await fetch(downloadUrl, { credentials: "include" });
+        const res = await api.fetchNoteFileRaw(downloadUrl);
         if (res.ok) {
           const blob = await res.blob();
           const cleanRel = (f.path || f.filename).replace(/^\/+/, "");

@@ -395,7 +395,7 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                         const { id: mediaId } = await api.uploadNoteMedia(createdNote.id, file);
                         const next = insertMediaMarkdown(createdNote.content, mediaId);
                         await api.updateNote(createdNote.id, { content: next });
-                        await queryClient.invalidateQueries({ queryKey: ["notes"] });
+                        void queryClient.invalidateQueries({ queryKey: ["notes"] });
                         toast.success("Note saved with image");
                         handleClose();
                       } catch (err) {

@@ -449,9 +449,9 @@ function useNotesService() {
         const updatedFiles = local.files.filter((f) => f.id !== fileId);
         await db.notes.update(noteId, { files: updatedFiles });
       }
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
       if (isOnline) {
-        await queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
+        void queryClient.invalidateQueries({ queryKey: ["notes", "seed"] });
       }
       toast.success("File deleted");
     },
@@ -465,7 +465,7 @@ function useNotesService() {
       if (local) {
         await db.notes.update(noteId, { share: res });
       }
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
       return res;
     },
     [queryClient],

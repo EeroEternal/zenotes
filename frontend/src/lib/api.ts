@@ -294,14 +294,32 @@ export async function uploadNoteMedia(noteId: string, file: File): Promise<{ id:
     t.startsWith("image/") ? { "Content-Type": f.type.trim() } : { "Content-Type": "application/octet-stream" };
   // 必须走 fetchWithTimeout：它带 Authorization。仅靠 Cookie 时 Cookie 一丢就 401“未登录”，
   // 且裸 fetch 无超时，弱网会一直转圈。
-  const res = await fetchWithTimeout(`${API_BASE}/notes/${noteId}/media`, {
-    ...fetchOpts,
-    method: "POST",
-    headers,
-    body: f,
-  }, 120_000);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/notes/${noteId}/media`, {
+      ...fetchOpts,
+      method: "POST",
+      headers,
+      body: f,
+    }, sizeTimeoutMs(f.size));
+  } catch (e) {
+    return rethrowAbort(e);
+  }
   await throwIfNotOk(res);
   return res.json();
+}
+
+/** 大文件按大小放宽超时：固定2分钟在慢网上必然误杀（保底 2 分钟，20KB/s 估算，上限 10 分钟） */
+function sizeTimeoutMs(bytes: number): number {
+  return Math.min(600_000, Math.max(120_000, bytes / 20));
+}
+
+/** 大文件上传/下载被中断时，服务器很可能已写入成功——提示先刷新别急着重试 */
+function rethrowAbort(e: unknown): never {
+  if (e instanceof Error && e.name === "AbortError") {
+    throw new ApiError("网络超时：文件可能已在服务端保存成功，请先刷新查看，再决定是否重试");
+  }
+  throw e;
 }
 
 export async function uploadNoteFiles(
@@ -316,10 +334,16 @@ export async function uploadNoteFiles(
       formData.append(`path_${idx}`, paths[idx]!);
     }
   });
-  const res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/files`, {
-    method: "POST",
-    body: formData,
-  }, 120_000);
+  const bytes = files.reduce((sum, f) => sum + f.size, 0);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/notes/${encodeURIComponent(noteId)}/files`, {
+      method: "POST",
+      body: formData,
+    }, sizeTimeoutMs(bytes));
+  } catch (e) {
+    return rethrowAbort(e);
+  }
   await throwIfNotOk(res);
   return res.json();
 }
@@ -388,10 +412,16 @@ export function getNoteFileDownloadUrl(noteId: string, fileId: string): string {
 }
 
 export async function downloadNoteFile(noteId: string, fileId: string, filename: string): Promise<void> {
-  const res = await fetchWithTimeout(
-    `${API_BASE}/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}`,
-    fetchOpts,
-  );
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${API_BASE}/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}`,
+      fetchOpts,
+      300_000, // 大附件下载给 5 分钟，勿用默认 25s
+    );
+  } catch (e) {
+    return rethrowAbort(e);
+  }
   await throwIfNotOk(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -401,7 +431,13 @@ export async function downloadNoteFile(noteId: string, fileId: string, filename:
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // 立即 revoke 会被 Safari 取消下载
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** 带鉴权/超时地取附件（打包下载、目录导出用）：裸 fetch 会缺 Authorization 且无超时 */
+export function fetchNoteFileRaw(url: string): Promise<Response> {
+  return fetchWithTimeout(url, fetchOpts, 300_000);
 }
 
 const GLOBAL_TOKEN_KEY = "zenotes_global_token";

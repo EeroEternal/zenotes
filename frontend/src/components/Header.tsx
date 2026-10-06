@@ -1,5 +1,5 @@
 import { Download, NotebookPen, Settings, LogOut, User, Search, X, Smartphone, Key, FolderDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GlobalTokenDialog } from "./GlobalTokenDialog";
 import {
@@ -110,16 +110,25 @@ export function Header({
     placeholderData: (prev) => prev,
   });
 
+  // 登录/注册成功立即关弹窗；本地清理与数据重拉放到后台，不阻塞 UI
+  // （曾经 await 全量重拉全部笔记，导致一直显示 “Signing in…”）
+  const finishSignIn = useCallback(
+    (msg: string, reset: () => void) => {
+      setLoginOpen(false);
+      reset();
+      toast.success(msg);
+      void (async () => {
+        await clearAllLocalData().catch(() => {});
+        await queryClient.invalidateQueries({ queryKey: ["auth", "me"] }).catch(() => {});
+        await queryClient.invalidateQueries({ queryKey: ["notes"] }).catch(() => {});
+      })();
+    },
+    [queryClient],
+  );
+
   const loginMut = useMutation({
     mutationFn: () => api.login(loginUser.trim(), loginPass),
-    onSuccess: async () => {
-      await clearAllLocalData();
-      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
-      setLoginOpen(false);
-      setLoginPass("");
-      toast.success("Signed in");
-    },
+    onSuccess: () => finishSignIn("Signed in", () => setLoginPass("")),
     onError: (err) => toastAuthError(err, "Sign-in failed"),
   });
 
@@ -130,15 +139,11 @@ export function Header({
         email: regEmail.trim(),
         password: loginPass,
       }),
-    onSuccess: async () => {
-      await clearAllLocalData();
-      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      await queryClient.invalidateQueries({ queryKey: ["notes"] });
-      setLoginOpen(false);
-      setLoginPass("");
-      setRegEmail("");
-      toast.success("Registered and signed in");
-    },
+    onSuccess: () =>
+      finishSignIn("Registered and signed in", () => {
+        setLoginPass("");
+        setRegEmail("");
+      }),
     onError: (err) => toastAuthError(err, "Registration failed"),
   });
 

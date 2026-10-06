@@ -210,7 +210,7 @@ export function NoteDialog({
       const zip = new JSZip();
       for (const f of note.files) {
         const downloadUrl = api.getNoteFileDownloadUrl(note.id, f.id);
-        const res = await fetch(downloadUrl, { credentials: 'include' });
+        const res = await api.fetchNoteFileRaw(downloadUrl);
         if (!res.ok) throw new Error(`下载失败: ${f.filename}`);
         const blob = await res.blob();
         const zipPath = f.path ? f.path : f.filename;
@@ -488,7 +488,11 @@ export function NoteDialog({
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => api.downloadNoteFile(note.id, f.id, f.filename)}
+                        onClick={() => {
+                          api.downloadNoteFile(note.id, f.id, f.filename).catch((e: unknown) =>
+                            toast.error(e instanceof ApiError ? e.message : '下载失败，请稍后重试'),
+                          );
+                        }}
                         className="p-1.5 rounded-lg hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-colors"
                         title="下载文件"
                       >
