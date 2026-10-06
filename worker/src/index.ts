@@ -976,9 +976,9 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   const sha = await sha256Hex(plain);
 
   const row = await env.DB.prepare(
-    "SELECT id, username, email, password_hash FROM users WHERE username = ?",
+    "SELECT id, username, email, password_hash FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE",
   )
-    .bind(username)
+    .bind(username, username)
     .first<{ id: number; username: string; email: string; password_hash: string }>();
 
   if (!row) {

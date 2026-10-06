@@ -362,10 +362,11 @@ export function Header({
           </div>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="login-username">Username</Label>
+              <Label htmlFor="login-username">{authTab === "login" ? "Username or email" : "Username"}</Label>
               <Input
                 id="login-username"
                 autoComplete="username"
+                placeholder={authTab === "login" ? "用户名或邮箱均可" : undefined}
                 value={loginUser}
                 onChange={(e) => setLoginUser(e.target.value)}
               />
