@@ -332,7 +332,7 @@ export function NoteDialog({
         overlayClassName="bg-black/55 backdrop-blur-[2px]"
         className={cn(
           colorClasses[note.color],
-          "w-full max-w-4xl rounded-3xl border p-6 shadow-2xl ring-1 ring-foreground/10 gap-0 max-h-[92vh] overflow-y-auto outline-none sm:rounded-3xl",
+          "max-w-4xl rounded-3xl border p-6 shadow-2xl ring-1 ring-foreground/10 gap-0 max-h-[92vh] overflow-y-auto outline-none sm:rounded-3xl",
           dragOver ? "border-primary ring-2 ring-primary/40" : "border-border/70",
         )}
         onDragEnter={onFileDragEnter}
