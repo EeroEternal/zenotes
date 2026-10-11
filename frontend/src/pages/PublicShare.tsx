@@ -246,7 +246,7 @@ export default function PublicShare() {
           </div>
 
           {/* Note Markdown Content */}
-          <div className="prose prose-sm sm:prose dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
+          <div className="prose prose-sm sm:prose dark:prose-invert max-w-none text-foreground/90 leading-relaxed [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

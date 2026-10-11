@@ -73,8 +73,9 @@ const colorClasses: Record<NoteColor, string> = {
 };
 
 const editorShellClass = `
-  min-h-[12rem] w-full max-w-3xl mx-auto rounded-2xl border border-border/50 bg-foreground/[0.05] px-3 py-2
+  min-h-[12rem] w-full min-w-0 max-w-3xl mx-auto rounded-2xl border border-border/50 bg-foreground/[0.05] px-3 py-2
   prose prose-sm dark:prose-invert max-w-none text-[15px] leading-relaxed text-foreground/90
+  [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto
   [&_ul]:my-1 [&_ol]:my-1 [&_blockquote]:border-border
   [&_code]:rounded [&_code]:bg-foreground/8 [&_code]:px-0.5 [&_code]:text-[0.9em]
   focus-within:outline-none

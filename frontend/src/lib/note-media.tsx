@@ -94,6 +94,8 @@ function NoteTextChunkMarkdown({
       className={`
         max-w-none text-foreground/90
         prose prose-sm dark:prose-invert
+        [overflow-wrap:anywhere]
+        [&_pre]:max-w-full [&_pre]:overflow-x-auto
         [&_a]:text-primary [&_a]:no-underline hover:[&_a]:underline
         [&_code]:text-[0.9em] [&_code]:rounded [&_code]:px-0.5 [&_code]:bg-foreground/8
         [&_pre]:p-2 [&_pre]:rounded-lg [&_pre]:bg-foreground/6
