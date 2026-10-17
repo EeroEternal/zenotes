@@ -37,7 +37,7 @@ function sortPosition(n: Note): number {
   return Number.isFinite(n.position) ? n.position : 0;
 }
 
-function computeMove(
+export function computeMove(
   notes: Note[],
   activeId: string,
   overId: string,
@@ -48,8 +48,9 @@ function computeMove(
   unpinnedIds: string[];
   pinnedChanged: boolean;
 } {
-  const pinnedNotes = notes.filter((n) => n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b));
-  const unpinnedNotes = notes.filter((n) => !n.pinned).sort((a, b) => sortPosition(a) - sortPosition(b));
+  const isPinned = (n: Note) => Boolean(n.pinned);
+  const pinnedNotes = notes.filter(isPinned).sort((a, b) => sortPosition(a) - sortPosition(b));
+  const unpinnedNotes = notes.filter((n) => !isPinned(n)).sort((a, b) => sortPosition(a) - sortPosition(b));
 
   const active = notes.find((n) => n.id === activeId);
   if (!active) {
@@ -61,36 +62,27 @@ function computeMove(
     };
   }
 
-  const sourcePinned = active.pinned;
+  const sourcePinned = isPinned(active);
   const pinnedChanged = sourcePinned !== destPinned;
 
-  const srcArr = sourcePinned ? pinnedNotes : unpinnedNotes;
-  const dstArr = destPinned ? pinnedNotes : unpinnedNotes;
-
-  const srcWithout = srcArr.filter((n) => n.id !== activeId);
-  const dstWithout = destPinned === sourcePinned ? srcWithout : dstArr;
-
+  const nextPinned = pinnedNotes.filter((n) => n.id !== activeId);
+  const nextUnpinned = unpinnedNotes.filter((n) => n.id !== activeId);
+  const target = destPinned ? nextPinned : nextUnpinned;
+  const overIndex = target.findIndex((n) => n.id === overId);
   const insertIndex =
-    overId === PINNED_CONTAINER_ID || overId === UNPINNED_CONTAINER_ID
-      ? dstWithout.length
-      : Math.max(
-          0,
-          dstWithout.findIndex((n) => n.id === overId),
-        );
+    overId === PINNED_CONTAINER_ID || overId === UNPINNED_CONTAINER_ID || overIndex < 0
+      ? target.length
+      : overIndex;
 
-  const moved: Note = { ...active, pinned: destPinned };
+  target.splice(insertIndex, 0, { ...active, pinned: destPinned });
 
-  const dstNext = [...dstWithout.slice(0, insertIndex), moved, ...dstWithout.slice(insertIndex)];
-
-  const nextPinned = (destPinned ? dstNext : srcWithout)
-    .map((n, idx) => ({ ...n, pinned: true, position: idx + 1 }));
-  const nextUnpinned = (!destPinned ? dstNext : srcWithout)
-    .map((n, idx) => ({ ...n, pinned: false, position: idx + 1 }));
+  const rankedPinned = nextPinned.map((n, idx) => ({ ...n, pinned: true, position: idx + 1 }));
+  const rankedUnpinned = nextUnpinned.map((n, idx) => ({ ...n, pinned: false, position: idx + 1 }));
 
   return {
-    nextNotes: [...nextPinned, ...nextUnpinned],
-    pinnedIds: nextPinned.map((n) => n.id),
-    unpinnedIds: nextUnpinned.map((n) => n.id),
+    nextNotes: [...rankedPinned, ...rankedUnpinned],
+    pinnedIds: rankedPinned.map((n) => n.id),
+    unpinnedIds: rankedUnpinned.map((n) => n.id),
     pinnedChanged,
   };
 }
@@ -173,36 +165,42 @@ function useNotesService() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allNotes]);
 
-  const total = filteredNotes.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const start = (safePage - 1) * PAGE_SIZE;
-  const paginatedNotes = useMemo(
-    () => filteredNotes.slice(start, start + PAGE_SIZE),
-    [filteredNotes, start],
-  );
-
-  const pinnedNotes = useMemo(
+  // 置顶始终整组展示。只对未置顶分页，避免置顶/取消置顶把笔记挤出当前页后列表和编辑页一起变空。
+  const pinnedAll = useMemo(
     () =>
-      paginatedNotes
-        .filter((n) => n.pinned)
+      filteredNotes
+        .filter((n) => Boolean(n.pinned))
         .sort((a, b) => {
           const posDiff = sortPosition(a) - sortPosition(b);
           if (posDiff !== 0) return posDiff;
           return b.updatedAt.localeCompare(a.updatedAt);
         }),
-    [paginatedNotes],
+    [filteredNotes],
   );
-  const unpinnedNotes = useMemo(
+  const unpinnedAll = useMemo(
     () =>
-      paginatedNotes
+      filteredNotes
         .filter((n) => !n.pinned)
         .sort((a, b) => {
           const posDiff = sortPosition(a) - sortPosition(b);
           if (posDiff !== 0) return posDiff;
           return b.updatedAt.localeCompare(a.updatedAt);
         }),
-    [paginatedNotes],
+    [filteredNotes],
+  );
+
+  const total = unpinnedAll.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const unpinnedNotes = useMemo(
+    () => unpinnedAll.slice(start, start + PAGE_SIZE),
+    [unpinnedAll, start],
+  );
+  const pinnedNotes = pinnedAll;
+  const paginatedNotes = useMemo(
+    () => [...pinnedNotes, ...unpinnedNotes],
+    [pinnedNotes, unpinnedNotes],
   );
 
   const addNoteMutation = useMutation({
@@ -318,7 +316,14 @@ function useNotesService() {
     (id: string) => {
       const note = allNotes.find((n) => n.id === id);
       if (!note) return;
-      updateNoteMutation.mutate({ id, updates: { pinned: !Boolean(note.pinned) } });
+      const nextPinned = !Boolean(note.pinned);
+      const group = allNotes.filter((n) => n.id !== id && Boolean(n.pinned) === nextPinned);
+      const minPos = group.reduce((min, n) => Math.min(min, sortPosition(n)), 0);
+      updateNoteMutation.mutate({
+        id,
+        updates: { pinned: nextPinned, position: minPos - 1 },
+      });
+      setPage(1);
     },
     [allNotes, updateNoteMutation],
   );
@@ -478,6 +483,7 @@ function useNotesService() {
 
   return {
     notes: paginatedNotes,
+    allNotes,
     pinnedNotes,
     unpinnedNotes,
     addNote,
@@ -501,7 +507,7 @@ function useNotesService() {
     pagination: {
       page: safePage,
       pageSize: PAGE_SIZE,
-      total,
+      total: filteredNotes.length,
       totalPages,
     },
     page: safePage,

@@ -102,7 +102,12 @@ export async function getLocalNote(id: string) {
   return db.notes.get(id);
 }
 
-export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>, completedOpId?: number) {
+export async function markNoteSynced(
+  id: string,
+  serverNote?: Partial<LocalNote>,
+  completedOpId?: number,
+  opts?: { preserveContent?: boolean },
+) {
   await db.transaction("rw", [db.notes, db.syncQueue, db.images], async () => {
     const existing = await db.notes.get(id);
     if (!existing) return;
@@ -158,12 +163,16 @@ export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>
       if (remainingOps.length > 0) {
         return;
       }
-      // Just update the note as synced
-      await db.notes.update(id, {
+      // 只改置顶/排序时服务端若没带回正文，不能把本地内容写成空。
+      const patch: Partial<LocalNote> = {
         ...serverNote,
         syncStatus: "synced",
         isDeleted: false,
-      });
+      };
+      if (opts?.preserveContent) {
+        delete patch.content;
+      }
+      await db.notes.update(id, patch);
     }
   });
 }

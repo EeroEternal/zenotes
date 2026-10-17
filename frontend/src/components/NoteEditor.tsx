@@ -8,7 +8,7 @@ import { useEffect } from "react";
 export function NoteEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { notes, updateNote, deleteNote, togglePin } = useNotes();
+  const { allNotes, updateNote, deleteNote, togglePin } = useNotes();
 
   // Handle URL redirection if the currently edited note has been remapped
   useEffect(() => {
@@ -18,7 +18,7 @@ export function NoteEditor() {
     }
   }, [id, navigate]);
 
-  const note = id ? notes.find((n) => n.id === id) ?? null : null;
+  const note = id ? allNotes.find((n) => n.id === id) ?? null : null;
 
   if (!note) {
     return (

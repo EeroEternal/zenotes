@@ -5,7 +5,7 @@ import { X, ZoomIn } from "lucide-react";
 export type NoteEmbeddedImageVariant = "card" | "dialog";
 
 const thumbClass: Record<NoteEmbeddedImageVariant, string> = {
-  card: "max-h-72 w-full h-auto max-w-full object-cover rounded-lg border border-border/40 bg-muted/15",
+  card: "w-full h-auto max-w-full object-contain rounded-lg border border-border/40 bg-muted/15",
   dialog: "max-h-52 w-full max-w-full object-contain rounded-xl border border-border/40 bg-muted/15",
 };
 

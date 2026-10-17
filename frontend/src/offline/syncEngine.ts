@@ -139,7 +139,9 @@ async function executeOperation(op: { id?: number; type: string; entityId: strin
       if (typeof p.pinned === "boolean") updateBody.pinned = p.pinned;
 
       const serverNote = await api.updateNote(op.entityId, updateBody as any);
-      await markNoteSynced(op.entityId, serverNote as any, op.id);
+      await markNoteSynced(op.entityId, serverNote as any, op.id, {
+        preserveContent: typeof p.content !== "string",
+      });
       await syncImagesForNote(op.entityId);
       break;
     }

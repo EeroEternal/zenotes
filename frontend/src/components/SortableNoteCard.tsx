@@ -37,8 +37,8 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
   } = useSortable({ id: note.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: isDragging ? CSS.Transform.toString(transform) : undefined,
+    transition: isDragging ? transition : undefined,
     zIndex: isDragging ? 50 : undefined,
   };
 
@@ -49,16 +49,14 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
       <div
         ref={setNodeRef}
         style={style}
-        {...attributes}
-        {...listeners}
         className={`
           masonry-item group relative rounded-2xl cursor-pointer
           border border-border/40 hover:border-border/80
-          transition-all duration-300 ease-out hover:-translate-y-1 touch-manipulation
+          hover:-translate-y-0.5 touch-manipulation
           ${colorClasses[note.color]}
           shadow-note hover:shadow-note-hover
-          animate-scale-in overflow-hidden
-          ${isDragging ? 'shadow-note-active opacity-90 scale-105 z-50' : ''}
+          overflow-hidden h-fit
+          ${isDragging ? 'shadow-note-active opacity-90 z-50' : ''}
         `}
       >
         {/* Pin indicator (click to unpin) */}
@@ -78,12 +76,14 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
         )}
 
         {/* Content - clickable area */}
-        <div 
+        <div
           className="p-4 pb-11 cursor-pointer"
+          {...attributes}
+          {...listeners}
           onClick={onClick}
         >
           {raw.trim() ? (
-            <div className="text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words max-h-[26rem] overflow-hidden">
+            <div className="text-sm text-foreground/75 leading-relaxed break-words">
               {parseNoteContentToNodes(raw, note.id, 'card')}
             </div>
           ) : (

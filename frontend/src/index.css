@@ -118,32 +118,32 @@
     column-gap: 1rem;
   }
 
-  @container (min-width: 480px) {
+  @media (min-width: 480px) {
     .masonry-grid {
       column-count: 2;
-      column-gap: 1rem;
     }
   }
 
-  @container (min-width: 768px) {
+  @media (min-width: 768px) {
     .masonry-grid {
       column-count: 3;
       column-gap: 1.25rem;
     }
   }
 
-  @container (min-width: 1024px) {
+  @media (min-width: 1100px) {
     .masonry-grid {
       column-count: 4;
-      column-gap: 1.25rem;
     }
   }
 
   .masonry-item {
     break-inside: avoid;
+    page-break-inside: avoid;
     margin-bottom: 1rem;
-    display: inline-block;
+    display: block;
     width: 100%;
+    height: fit-content;
   }
 
   .glass-effect {

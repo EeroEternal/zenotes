@@ -1257,13 +1257,14 @@ async function updateNote(
   let newPinned = body.pinned !== undefined ? (body.pinned ? 1 : 0) : existing.pinned;
   let newPosition = existing.position;
 
-  if (newPinned !== existing.pinned) {
-    const maxRow = await env.DB.prepare(
-      "SELECT COALESCE(MAX(position), 0) as m FROM notes WHERE user_id = ? AND pinned = ?",
+  if (Number(newPinned) !== Number(existing.pinned)) {
+    // 放到该分组最前，取消置顶后笔记仍出现在列表开头，而不是被挤到最后一页。
+    const minRow = await env.DB.prepare(
+      "SELECT COALESCE(MIN(position), 1) as m FROM notes WHERE user_id = ? AND pinned = ?",
     )
       .bind(userId, newPinned)
       .first<{ m: number }>();
-    newPosition = (maxRow?.m ?? 0) + 1;
+    newPosition = (minRow?.m ?? 1) - 1;
   }
 
   let newTitle: string | null = existing.title;

@@ -47,10 +47,10 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
         className={`
           masonry-item group relative rounded-2xl cursor-pointer
           border border-border/40 hover:border-border/80
-          transition-all duration-300 ease-out hover:-translate-y-1
+          hover:-translate-y-0.5
           ${colorClasses[note.color]}
           shadow-note hover:shadow-note-hover
-          animate-scale-in overflow-hidden
+          overflow-hidden h-fit
         `}
         onClick={onClick}
       >
@@ -71,7 +71,7 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
 
         <div className="p-4 pb-11">
           {preview.trim() ? (
-            <div className="text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words max-h-[26rem] overflow-hidden">
+            <div className="text-sm text-foreground/75 leading-relaxed break-words">
               {parseNoteContentToNodes(preview, note.id, "card")}
             </div>
           ) : (

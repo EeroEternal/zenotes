@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useNotes } from "./useNotes";
+import { computeMove, useNotes } from "./useNotes";
 import { db } from "@/offline/db";
 
 function TestComponent() {
@@ -42,6 +42,29 @@ function makeNote(id: number) {
     isDeleted: false,
   };
 }
+
+describe("computeMove", () => {
+  const notes = [1, 2, 3].map((id) => ({
+    ...makeNote(id),
+    pinned: id === 1,
+  }));
+
+  it("reorders inside pinned without unpinning the other pinned notes", () => {
+    const moved = computeMove(notes as never, "1", "1", true);
+    expect(moved.pinnedIds).toEqual(["1"]);
+    expect(moved.unpinnedIds).toEqual(["2", "3"]);
+    expect(moved.nextNotes.filter((n) => n.pinned).map((n) => n.id)).toEqual(["1"]);
+  });
+
+  it("moves a pinned note into the unpinned list once", () => {
+    const moved = computeMove(notes as never, "1", "unpinned", false);
+    expect(moved.pinnedChanged).toBe(true);
+    expect(moved.pinnedIds).toEqual([]);
+    expect(moved.unpinnedIds[0]).toBe("2");
+    expect(moved.nextNotes.map((n) => n.id).sort()).toEqual(["1", "2", "3"]);
+    expect(moved.nextNotes.find((n) => n.id === "1")?.pinned).toBe(false);
+  });
+});
 
 describe("useNotes local-first pagination", () => {
   beforeEach(async () => {
