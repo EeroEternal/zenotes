@@ -22,6 +22,7 @@ import { insertMediaMarkdown } from '@/lib/note-media';
 import { cn } from '@/lib/utils';
 import { useNotes } from '@/hooks/useNotes';
 import { dragHasFiles, filesFromDrop } from '@/lib/drop-files';
+import { imagesFromClipboard } from '@/lib/clipboard';
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -162,6 +163,36 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
     setTagsText('');
     setPendingFiles([]);
     setIsExpanded(false);
+  };
+
+  // 与图片按钮同一套流程：先建笔记、传图、关闭。
+  const saveNoteWithImage = async (file: File) => {
+    const tags = tagsText
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    setMediaUploading(true);
+    let createdNote: { id: string; content: string } | null = null;
+    try {
+      createdNote = await api.createNote({
+        content: content.trim(),
+        tags,
+      });
+      const { id: mediaId } = await api.uploadNoteMedia(createdNote.id, file);
+      const next = insertMediaMarkdown(createdNote.content, mediaId);
+      await api.updateNote(createdNote.id, { content: next });
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
+      toast.success("Note saved with image");
+      handleClose();
+    } catch (err) {
+      // 传图失败就删掉刚建的空笔记，否则重试一次多一条空笔记
+      if (createdNote?.id) api.deleteNote(createdNote.id).catch(() => {});
+      toast.error(
+        err instanceof ApiError ? err.message : `保存或上传失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setMediaUploading(false);
+    }
   };
 
   // 拖拽文件/目录到笔记区
@@ -337,6 +368,12 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={(e) => {
+                      const images = imagesFromClipboard(e.clipboardData);
+                      if (images.length === 0) return;
+                      e.preventDefault();
+                      void saveNoteWithImage(images[0]);
+                    }}
                     placeholder="Take a note..."
                     rows={6}
                     autoFocus
@@ -394,36 +431,10 @@ export function NoteInput({ onAddNote, isSubmitting = false, compact = false, cl
                     accept="image/*"
                     className="sr-only"
                     tabIndex={-1}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = "";
-                      if (!file) return;
-                      const tags = tagsText
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean);
-                      setMediaUploading(true);
-                      let createdNote: { id: string; content: string } | null = null;
-                      try {
-                        createdNote = await api.createNote({
-                          content: content.trim(),
-                          tags,
-                        });
-                        const { id: mediaId } = await api.uploadNoteMedia(createdNote.id, file);
-                        const next = insertMediaMarkdown(createdNote.content, mediaId);
-                        await api.updateNote(createdNote.id, { content: next });
-                        void queryClient.invalidateQueries({ queryKey: ["notes"] });
-                        toast.success("Note saved with image");
-                        handleClose();
-                      } catch (err) {
-                        // 传图失败就删掉刚建的空笔记，否则重试一次多一条空笔记
-                        if (createdNote?.id) api.deleteNote(createdNote.id).catch(() => {});
-                        toast.error(
-                          err instanceof ApiError ? err.message : `保存或上传失败：${err instanceof Error ? err.message : String(err)}`,
-                        );
-                      } finally {
-                        setMediaUploading(false);
-                      }
+                      if (file) void saveNoteWithImage(file);
                     }}
                   />
 

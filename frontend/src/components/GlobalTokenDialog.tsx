@@ -104,13 +104,13 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+      <DialogContent className="sm:max-w-[540px] overflow-hidden">
+        <DialogHeader className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
               <Key className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <DialogTitle className="text-xl">全局主令牌 (Master Global Token)</DialogTitle>
               <DialogDescription className="text-sm mt-0.5">
                 持有此令牌可全局检索并下载全库所有笔记、文件及文件夹目录。
@@ -119,9 +119,9 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
           </div>
         </DialogHeader>
 
-        <div className="space-y-5 pt-3">
+        <div className="space-y-5 pt-3 min-w-0 overflow-hidden">
           {/* Token input & actions */}
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
               <span>全局授权令牌</span>
               <button
@@ -133,17 +133,18 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
                 {copied ? "已复制" : "复制令牌"}
               </button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 min-w-0">
               <Input
                 value={editedToken}
                 onChange={(e) => setEditedToken(e.target.value)}
                 placeholder="设置全局访问令牌..."
-                className="font-mono text-sm"
+                className="font-mono text-sm flex-1 min-w-0"
               />
               <Button
                 variant="outline"
                 disabled={saving || loading || editedToken === token}
                 onClick={handleSaveToken}
+                className="shrink-0"
               >
                 {saving ? "保存中..." : "保存修改"}
               </Button>
@@ -154,7 +155,7 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
           </div>
 
           {/* Quick shortcuts */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5 min-w-0">
             <Button
               variant="default"
               className="w-full flex items-center justify-center gap-2"
@@ -186,22 +187,22 @@ export function GlobalTokenDialog({ open, onOpenChange }: GlobalTokenDialogProps
           </div>
 
           {/* Curl snippet */}
-          <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                <Terminal className="w-3.5 h-3.5 text-primary" />
-                <span>一键全站打包下载 (cURL)</span>
+          <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground min-w-0">
+                <Terminal className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="truncate">一键全站打包下载 (cURL)</span>
               </div>
               <button
                 type="button"
                 onClick={handleCopyCurl}
-                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors shrink-0"
               >
                 {copiedCurl ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedCurl ? "已复制" : "复制命令"}
               </button>
             </div>
-            <pre className="text-[11px] font-mono bg-background/80 p-2 rounded-lg border border-border/40 overflow-x-auto text-muted-foreground select-all">
+            <pre className="text-[11px] font-mono bg-background/80 p-2 rounded-lg border border-border/40 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground select-all max-w-full">
               {curlExample}
             </pre>
           </div>

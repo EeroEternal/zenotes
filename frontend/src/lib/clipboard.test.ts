@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { copyText } from "./clipboard";
+import { copyText, imagesFromClipboard } from "./clipboard";
 
 describe("copyText", () => {
   it("uses navigator.clipboard when available", async () => {
@@ -26,5 +26,18 @@ describe("copyText", () => {
     document.execCommand = (() => false) as typeof document.execCommand;
 
     await expect(copyText("x")).rejects.toThrow();
+  });
+});
+
+describe("imagesFromClipboard", () => {
+  it("keeps only image files", () => {
+    const png = new File(["x"], "shot.png", { type: "image/png" });
+    const txt = new File(["x"], "a.txt", { type: "text/plain" });
+    const data = { files: [png, txt] } as unknown as DataTransfer;
+    expect(imagesFromClipboard(data)).toEqual([png]);
+  });
+
+  it("returns nothing when clipboard data is missing", () => {
+    expect(imagesFromClipboard(null)).toEqual([]);
   });
 });

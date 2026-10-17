@@ -25,7 +25,7 @@ import {
   Archive,
 } from 'lucide-react';
 import { noteContentToTipTapHtml, tipTapHtmlToNoteContent } from '@/lib/note-editor-serialization';
-import { copyText } from '@/lib/clipboard';
+import { copyText, imagesFromClipboard } from '@/lib/clipboard';
 import { createNoteEditorExtensions } from '@/lib/note-tiptap-extensions';
 import { noteMediaUrl } from '@/lib/note-media';
 import { dragHasFiles, filesFromDrop } from '@/lib/drop-files';
@@ -106,6 +106,8 @@ export function NoteDialog({
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const editorWrapRef = useRef<HTMLDivElement>(null);
+  // editorProps is captured once at editor creation, so pastes route through a ref to the current note/onUpdate.
+  const pasteImagesRef = useRef<(files: File[]) => void>(() => {});
 
   const { uploadFiles, deleteFile } = useNotes();
 
@@ -244,8 +246,49 @@ export function NoteDialog({
       attributes: {
         class: 'tiptap focus:outline-none min-h-[10rem]',
       },
+      // Screenshots/copied images land as clipboard image files, which TipTap drops without this.
+      handlePaste: (_view, event) => {
+        const images = imagesFromClipboard(event.clipboardData);
+        if (images.length === 0) return false;
+        event.preventDefault();
+        pasteImagesRef.current(images);
+        return true;
+      },
     },
   });
+
+  const uploadAndInsertImage = async (file: File) => {
+    if (!note || !editor) return;
+    setMediaUploading(true);
+    try {
+      const { id } = await api.uploadNoteMedia(note.id, file);
+      editor
+        .chain()
+        .focus()
+        .setImage({
+          src: noteMediaUrl(note.id, id),
+          alt: 'image',
+          mediaId: id,
+        } as { src: string; alt?: string; mediaId: string })
+        .run();
+      queueMicrotask(() => {
+        const content = tipTapHtmlToNoteContent(editor.getHTML());
+        onUpdate(note.id, { content });
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'Image upload failed. Try again later.',
+      );
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  pasteImagesRef.current = (files) => {
+    void (async () => {
+      for (const file of files) await uploadAndInsertImage(file);
+    })();
+  };
 
   useEffect(() => {
     if (!open || !note) return;
@@ -383,33 +426,10 @@ export function NoteDialog({
           accept="image/*"
           className="sr-only"
           tabIndex={-1}
-          onChange={async (e) => {
+          onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = '';
-            if (!file || !note || !editor) return;
-            setMediaUploading(true);
-            try {
-              const { id } = await api.uploadNoteMedia(note.id, file);
-              editor
-                .chain()
-                .focus()
-                .setImage({
-                  src: noteMediaUrl(note.id, id),
-                  alt: 'image',
-                  mediaId: id,
-                } as { src: string; alt?: string; mediaId: string })
-                .run();
-              queueMicrotask(() => {
-                const content = tipTapHtmlToNoteContent(editor.getHTML());
-                onUpdate(note.id, { content });
-              });
-            } catch (err) {
-              toast.error(
-                err instanceof ApiError ? err.message : 'Image upload failed. Try again later.',
-              );
-            } finally {
-              setMediaUploading(false);
-            }
+            if (file) void uploadAndInsertImage(file);
           }}
         />
 

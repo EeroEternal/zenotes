@@ -9,6 +9,7 @@ import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 const NoteEditor = lazy(() => import("@/components/NoteEditor").then((m) => ({ default: m.NoteEditor })));
 const PublicShare = lazy(() => import("./pages/PublicShare"));
 const GlobalAccess = lazy(() => import("./pages/GlobalAccess"));
+const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 import { NotesProvider } from "@/hooks/useNotes";
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/share/:shareId" element={<PublicShare />} />
             <Route path="/s/:shareId" element={<PublicShare />} />
             <Route path="/global" element={<GlobalAccess />} />
+            <Route path="/settings" element={<Settings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

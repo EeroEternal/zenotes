@@ -1,8 +1,15 @@
+/** Image files on the clipboard (screenshots, copied images). */
+export function imagesFromClipboard(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  return Array.from(data.files).filter((file) => file.type.startsWith("image/"));
+}
+
 /**
  * Copy text to the clipboard. Uses navigator.clipboard when available and falls
  * back to a hidden textarea + execCommand for non-secure contexts (http/LAN) and
  * WebViews where navigator.clipboard is missing or rejects. Throws on failure.
  */
+
 export async function copyText(text: string): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {

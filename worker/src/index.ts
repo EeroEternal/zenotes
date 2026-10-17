@@ -122,8 +122,8 @@ function corsHeaders(env: Env, request: Request, extra?: HeadersInit): Headers {
     h.set("Access-Control-Allow-Origin", o);
     h.set("Access-Control-Allow-Credentials", "true");
   }
-  h.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization, X-Global-Token");
+  h.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  h.set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization, X-Global-Token, X-Filename, X-Path");
   return h;
 }
 
@@ -850,9 +850,14 @@ export default {
         return exportGlobalAllZip(env, request);
       }
 
-      // Global search & list notes
-      if (path === "/api/global/notes" && request.method === "GET") {
-        return listGlobalNotes(env, request);
+      // Global search, list & create notes
+      if (path === "/api/global/notes") {
+        if (request.method === "GET") {
+          return listGlobalNotes(env, request);
+        }
+        if (request.method === "POST") {
+          return createGlobalNote(request, env);
+        }
       }
 
       // Global single note export (ZIP of note + its files/directories)
@@ -861,27 +866,53 @@ export default {
         return exportGlobalNoteZip(env, request, pathIdSegment(globalNoteZipMatch[1]!));
       }
 
-      // Global single note markdown download
+      // Global single note markdown download or raw markdown update
       const globalNoteMdMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/markdown\/?$/);
-      if (globalNoteMdMatch && request.method === "GET") {
-        return getGlobalNoteMarkdown(env, request, pathIdSegment(globalNoteMdMatch[1]!));
+      if (globalNoteMdMatch) {
+        const noteId = pathIdSegment(globalNoteMdMatch[1]!);
+        if (request.method === "GET") {
+          return getGlobalNoteMarkdown(env, request, noteId);
+        }
+        if (request.method === "PUT" || request.method === "POST" || request.method === "PATCH") {
+          return updateGlobalNoteMarkdown(request, env, noteId);
+        }
       }
 
-      // Global single file download
+      // Global note files list & upload
+      const globalNoteFilesListMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/files\/?$/);
+      if (globalNoteFilesListMatch) {
+        const noteId = pathIdSegment(globalNoteFilesListMatch[1]!);
+        if (request.method === "POST") {
+          return uploadGlobalNoteFiles(request, env, noteId);
+        }
+      }
+
+      // Global single file download & delete
       const globalNoteFileMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/files\/([^/]+)\/?$/);
-      if (globalNoteFileMatch && request.method === "GET") {
-        return getGlobalNoteFile(
-          env,
-          request,
-          pathIdSegment(globalNoteFileMatch[1]!),
-          pathIdSegment(globalNoteFileMatch[2]!),
-        );
+      if (globalNoteFileMatch) {
+        const noteId = pathIdSegment(globalNoteFileMatch[1]!);
+        const fileId = pathIdSegment(globalNoteFileMatch[2]!);
+        if (request.method === "GET") {
+          return getGlobalNoteFile(env, request, noteId, fileId);
+        }
+        if (request.method === "DELETE") {
+          return deleteGlobalNoteFile(env, request, noteId, fileId);
+        }
       }
 
-      // Global single note detail
+      // Global single note detail, update, delete
       const globalNoteDetailMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/?$/);
-      if (globalNoteDetailMatch && request.method === "GET") {
-        return getGlobalNote(env, request, pathIdSegment(globalNoteDetailMatch[1]!));
+      if (globalNoteDetailMatch) {
+        const noteId = pathIdSegment(globalNoteDetailMatch[1]!);
+        if (request.method === "GET") {
+          return getGlobalNote(env, request, noteId);
+        }
+        if (request.method === "PATCH" || request.method === "PUT") {
+          return updateGlobalNote(request, env, noteId);
+        }
+        if (request.method === "DELETE") {
+          return deleteGlobalNote(env, request, noteId);
+        }
       }
 
       return new Response(JSON.stringify({ error: "not_found" }), {
@@ -2576,6 +2607,216 @@ async function exportGlobalAllZip(
   });
 }
 
+async function resolveGlobalUserId(
+  env: Env,
+  request: Request,
+  bodyUserId?: number,
+  bodyUsername?: string,
+): Promise<number> {
+  const sessionUid = await sessionUserId(request, env);
+  if (sessionUid !== null) return sessionUid;
+
+  await ensureDbTables(env.DB);
+
+  if (typeof bodyUserId === "number" && Number.isInteger(bodyUserId) && bodyUserId > 0) {
+    const u = await env.DB.prepare("SELECT id FROM users WHERE id = ?")
+      .bind(bodyUserId)
+      .first<{ id: number }>();
+    if (u) return u.id;
+  }
+
+  if (typeof bodyUsername === "string" && bodyUsername.trim()) {
+    const u = await env.DB.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE")
+      .bind(bodyUsername.trim())
+      .first<{ id: number }>();
+    if (u) return u.id;
+  }
+
+  const recentNoteUser = await env.DB.prepare(
+    "SELECT user_id FROM notes ORDER BY updated_at DESC LIMIT 1",
+  ).first<{ user_id: number }>();
+  if (recentNoteUser?.user_id) return recentNoteUser.user_id;
+
+  const realUser = await env.DB.prepare(
+    "SELECT id FROM users WHERE username != 'default' ORDER BY id ASC LIMIT 1",
+  ).first<{ id: number }>();
+  if (realUser?.id) return realUser.id;
+
+  return 1;
+}
+
+async function createGlobalNote(request: Request, env: Env): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  const contentType = request.headers.get("Content-Type") || "";
+  if (contentType.includes("text/markdown") || contentType.includes("text/plain")) {
+    const rawContent = (await request.text()).trim();
+    const userId = await resolveGlobalUserId(env, request);
+    const jsonReq = new Request(request.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: rawContent }),
+    });
+    return createNote(jsonReq, env, userId);
+  }
+
+  const cloned = request.clone();
+  let body: { userId?: number; username?: string } = {};
+  try {
+    body = (await cloned.json()) as { userId?: number; username?: string };
+  } catch {}
+
+  const userId = await resolveGlobalUserId(env, request, body.userId, body.username);
+  return createNote(request, env, userId);
+}
+
+async function updateGlobalNote(
+  request: Request,
+  env: Env,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  const existing = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+  if (!existing) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  return updateNote(request, env, existing.user_id, noteId);
+}
+
+async function updateGlobalNoteMarkdown(
+  request: Request,
+  env: Env,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  const existing = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+  if (!existing) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  const contentType = request.headers.get("Content-Type") || "";
+  let newContent = "";
+  if (contentType.includes("application/json")) {
+    const body = (await request.json()) as { content?: string };
+    newContent = typeof body.content === "string" ? body.content.trim() : "";
+  } else {
+    newContent = (await request.text()).trim();
+  }
+
+  const jsonReq = new Request(request.url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: newContent }),
+  });
+  return updateNote(jsonReq, env, existing.user_id, noteId);
+}
+
+async function deleteGlobalNote(
+  env: Env,
+  request: Request,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  const existing = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+  if (!existing) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  return deleteNote(env, request, existing.user_id, noteId);
+}
+
+async function uploadGlobalNoteFiles(
+  request: Request,
+  env: Env,
+  noteId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  const existing = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+  if (!existing) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  return uploadNoteFiles(request, env, existing.user_id, noteId);
+}
+
+async function deleteGlobalNoteFile(
+  env: Env,
+  request: Request,
+  noteId: string,
+  fileId: string,
+): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 },
+    );
+  }
+
+  await ensureDbTables(env.DB);
+  const existing = await env.DB.prepare("SELECT * FROM notes WHERE id = ?")
+    .bind(noteId)
+    .first<NoteRow>();
+  if (!existing) {
+    return json(env, request, { error: "not_found" }, { status: 404 });
+  }
+
+  return deleteNoteFile(env, request, existing.user_id, noteId, fileId);
+}
+
 async function handleAgentGuide(env: Env, request: Request): Promise<Response> {
   const text = `# Zenotes API Guide for AI Agents
 
@@ -2592,22 +2833,55 @@ Every agent request should provide your master global token:
    \`GET https://api.zenotes.site/api/global/notes?q={keyword}&token=<YOUR_GLOBAL_TOKEN>\`
    Returns JSON list with note metadata, body content (Markdown), associated files with directory paths, tags, and timestamps.
 
-2. **Get Single Note as Raw Markdown**:
+2. **Get Single Note (JSON)**:
+   \`GET https://api.zenotes.site/api/global/notes/{noteId}?token=<YOUR_GLOBAL_TOKEN>\`
+
+3. **Get Single Note as Raw Markdown**:
    \`GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token=<YOUR_GLOBAL_TOKEN>\`
    Returns raw clean Markdown text.
 
-3. **Download a File Attachment**:
+4. **Download a File Attachment**:
    \`GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token=<YOUR_GLOBAL_TOKEN>\`
 
-4. **Export a Note with all Files/Directories as ZIP**:
+5. **Export a Note with all Files/Directories as ZIP**:
    \`GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token=<YOUR_GLOBAL_TOKEN>\`
 
-5. **Export Entire Knowledge Base as ZIP**:
+6. **Export Entire Knowledge Base as ZIP**:
    \`GET https://api.zenotes.site/api/global/export-all.zip?token=<YOUR_GLOBAL_TOKEN>\`
 
-## Example (cURL)
+## How to Create, Edit, and Delete Notes
+1. **Create a Note**:
+   \`POST https://api.zenotes.site/api/global/notes\`
+   Body (JSON): \`{ "title": "Optional Title", "content": "# Markdown content", "tags": ["tag1"], "color": "white", "pinned": false }\`
+
+2. **Edit / Update a Note (JSON)**:
+   \`PATCH https://api.zenotes.site/api/global/notes/{noteId}\`
+   Body (JSON): \`{ "title": "Updated Title", "content": "Updated Markdown", "tags": ["tag1"], "pinned": true }\`
+
+3. **Edit / Replace Raw Markdown Directly**:
+   \`PUT https://api.zenotes.site/api/global/notes/{noteId}/markdown\`
+   Header: \`Content-Type: text/markdown\`
+   Body: Raw Markdown text
+
+4. **Delete a Note**:
+   \`DELETE https://api.zenotes.site/api/global/notes/{noteId}\`
+
+## Examples (cURL)
 \`\`\`bash
+# Search notes
 curl -s -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" "https://api.zenotes.site/api/global/notes?q="
+
+# Create a note
+curl -s -X POST "https://api.zenotes.site/api/global/notes" \\
+  -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"Agent Note","content":"Hello from AI Agent!","tags":["agent"]}'
+
+# Edit a note
+curl -s -X PATCH "https://api.zenotes.site/api/global/notes/<NOTE_ID>" \\
+  -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"Updated content from AI Agent"}'
 \`\`\`
 `;
 

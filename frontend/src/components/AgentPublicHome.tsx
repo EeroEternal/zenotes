@@ -43,7 +43,7 @@ export function AgentPublicHome({ onSignInClick }: AgentPublicHomeProps) {
   };
 
   const agentPromptSnippet = `### Zenotes Agent Note Access Integration
-You have programmatic access to search, retrieve, and download user notes and files from Zenotes via HTTP REST API.
+You have programmatic access to search, retrieve, create, edit, and download user notes and files from Zenotes via HTTP REST API.
 
 Base URL: ${apiHost}/api/global
 Authentication: Provide your Global Token in one of the following ways:
@@ -59,17 +59,31 @@ Available Endpoints:
 2. Get raw Markdown text of a note:
    GET ${apiHost}/api/global/notes/{noteId}/markdown?token=${tokenPlaceholder}
 
-3. Download a specific file attachment:
+3. Create a new note:
+   POST ${apiHost}/api/global/notes
+   Headers: Content-Type: application/json, X-Global-Token: ${tokenPlaceholder}
+   Body: { "title": "Optional Title", "content": "# Markdown content", "tags": ["tag1"], "pinned": false }
+
+4. Edit / update an existing note:
+   PATCH ${apiHost}/api/global/notes/{noteId}
+   Headers: Content-Type: application/json, X-Global-Token: ${tokenPlaceholder}
+   Body: { "title": "Updated Title", "content": "Updated Markdown", "tags": ["tag1"], "pinned": true }
+   (Or PUT ${apiHost}/api/global/notes/{noteId}/markdown with raw text/markdown body)
+
+5. Delete a note:
+   DELETE ${apiHost}/api/global/notes/{noteId}
+
+6. Download a specific file attachment:
    GET ${apiHost}/api/global/notes/{noteId}/files/{fileId}?token=${tokenPlaceholder}
 
-4. Export a note with its directory structure as a ZIP:
+7. Export a note with its directory structure as a ZIP:
    GET ${apiHost}/api/global/notes/{noteId}/export.zip?token=${tokenPlaceholder}
 
-5. Export the entire knowledge base as a ZIP:
+8. Export the entire knowledge base as a ZIP:
    GET ${apiHost}/api/global/export-all.zip?token=${tokenPlaceholder}
 
 Instructions:
-When the user asks for their notes, memos, project documentation, or uploaded attachments, query the API using the provided token.`;
+When the user asks to search, read, create, or edit their notes, memos, project documentation, or uploaded attachments, call the API using the provided token.`;
 
   const curlSnippet = `# 1. 全局检索笔记内容、文件名或目录
 curl -s -H "X-Global-Token: ${tokenPlaceholder}" \\
@@ -79,13 +93,25 @@ curl -s -H "X-Global-Token: ${tokenPlaceholder}" \\
 curl -s -H "X-Global-Token: ${tokenPlaceholder}" \\
   "${apiHost}/api/global/notes/<NOTE_ID>/markdown"
 
-# 3. 下载单个附件文件
+# 3. 新建一篇笔记 (Create Note)
+curl -s -X POST "${apiHost}/api/global/notes" \\
+  -H "X-Global-Token: ${tokenPlaceholder}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"Agent Note","content":"# Hello from AI Agent","tags":["agent"]}'
+
+# 4. 编辑/更新笔记内容或标题 (Edit Note)
+curl -s -X PATCH "${apiHost}/api/global/notes/<NOTE_ID>" \\
+  -H "X-Global-Token: ${tokenPlaceholder}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"# Updated Markdown Content","tags":["updated"]}'
+
+# 5. 下载单个附件文件
 curl -OJ "${apiHost}/api/global/notes/<NOTE_ID>/files/<FILE_ID>?token=${tokenPlaceholder}"
 
-# 4. 单篇笔记打包 ZIP 下载（含笔记 Markdown 及所有子目录附件）
+# 6. 单篇笔记打包 ZIP 下载（含笔记 Markdown 及所有子目录附件）
 curl -OJ "${apiHost}/api/global/notes/<NOTE_ID>/export.zip?token=${tokenPlaceholder}"
 
-# 5. 全库所有笔记与目录结构一键打包下载为 ZIP
+# 7. 全库所有笔记与目录结构一键打包下载为 ZIP
 curl -OJ "${apiHost}/api/global/export-all.zip?token=${tokenPlaceholder}"`;
 
   const pythonSnippet = `import requests
@@ -103,7 +129,7 @@ def search_notes(query=""):
     data = res.json()
     print(f"找到 {data['total']} 篇笔记:")
     for note in data.get("notes", []):
-        print(f"- ID: {note['id'][:8]} | 内容摘要: {note['content'][:50]}... | 包含文件: {len(note['files'])}")
+        print(f"- ID: {note['id']} | 内容摘要: {note['content'][:50]}... | 包含文件: {len(note['files'])}")
     return data.get("notes", [])
 
 def get_note_markdown(note_id):
@@ -112,6 +138,22 @@ def get_note_markdown(note_id):
     res = requests.get(url, headers=HEADERS, params={"token": TOKEN})
     res.raise_for_status()
     return res.text
+
+def create_note(content, title=None, tags=None):
+    """新建笔记"""
+    url = f"{API_HOST}/api/global/notes"
+    payload = {"content": content, "title": title, "tags": tags or []}
+    res = requests.post(url, headers=HEADERS, json=payload)
+    res.raise_for_status()
+    return res.json()
+
+def update_note(note_id, content=None, title=None, tags=None, pinned=None):
+    """编辑/更新已有笔记"""
+    url = f"{API_HOST}/api/global/notes/{note_id}"
+    payload = {k: v for k, v in {"content": content, "title": title, "tags": tags, "pinned": pinned}.items() if v is not None}
+    res = requests.patch(url, headers=HEADERS, json=payload)
+    res.raise_for_status()
+    return res.json()
 
 # 使用示例
 if __name__ == "__main__":
@@ -130,7 +172,7 @@ if __name__ == "__main__":
           面向 AI 智能体的笔记与内容访问指南
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          外部 AI Agent（如 Claude、GPT、Antigravity、Cursor、Cline 等）及自动化程序无需登录 Cookie 会话，通过携带全局令牌即可快速检索与下载全库笔记正文、文件及多级目录结构。
+          外部 AI Agent（如 Claude、GPT、Antigravity、Cursor、Cline 等）及自动化程序无需登录 Cookie 会话，通过携带全局令牌即可检索、新建、编辑与下载全库笔记正文、文件及多级目录结构。
         </p>
 
         {/* Quick entry buttons */}
@@ -201,8 +243,8 @@ if __name__ == "__main__":
             <BookOpen className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">智能体核心接口与操作 (How to Get & Download)</h2>
-            <p className="text-xs text-muted-foreground">支持检索、读取纯 Markdown 正文、下载代码/附件以及流式打包 ZIP</p>
+            <h2 className="text-base font-semibold text-foreground">智能体核心接口与操作 (Read, Write & Export)</h2>
+            <p className="text-xs text-muted-foreground">支持检索、读取纯 Markdown、新建与编辑笔记、下载附件以及流式打包 ZIP</p>
           </div>
         </div>
 
@@ -235,7 +277,35 @@ if __name__ == "__main__":
             </p>
           </div>
 
-          {/* Endpoint 3 */}
+          {/* Endpoint 3: Create Note */}
+          <div className="rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/15 text-blue-600">POST</span>
+                <code className="text-xs font-mono font-medium text-foreground">/api/global/notes</code>
+              </div>
+              <span className="text-xs text-muted-foreground font-medium">新建笔记 (Create)</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              传入 JSON <code className="font-mono bg-muted px-1 py-0.5 rounded">{`{ "title", "content", "tags", "pinned" }`}</code> 或纯文本 Markdown 即可创建新笔记。
+            </p>
+          </div>
+
+          {/* Endpoint 4: Edit Note */}
+          <div className="rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600">PATCH</span>
+                <code className="text-xs font-mono font-medium text-foreground">/api/global/notes/{`{noteId}`}</code>
+              </div>
+              <span className="text-xs text-muted-foreground font-medium">编辑更新笔记 (Edit)</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              按笔记 ID 修改标题、Markdown 正文、标签或置顶状态；也可向 <code className="font-mono bg-muted px-1 py-0.5 rounded">/api/global/notes/{`{noteId}`}/markdown</code> 发送 <code className="font-mono bg-muted px-1 py-0.5 rounded">PUT</code> 直接替换纯文本 Markdown。
+            </p>
+          </div>
+
+          {/* Endpoint 5 */}
           <div className="rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -249,7 +319,7 @@ if __name__ == "__main__":
             </p>
           </div>
 
-          {/* Endpoint 4 */}
+          {/* Endpoint 6 */}
           <div className="rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -263,7 +333,7 @@ if __name__ == "__main__":
             </p>
           </div>
 
-          {/* Endpoint 5 */}
+          {/* Endpoint 7 */}
           <div className="rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">

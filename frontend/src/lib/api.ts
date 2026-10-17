@@ -527,3 +527,58 @@ export function getGlobalFileDownloadUrl(noteId: string, fileId: string, token: 
   return `${API_BASE}/global/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token.trim())}`;
 }
 
+export async function createGlobalNote(
+  token: string,
+  payload: {
+    title?: string | null;
+    content: string;
+    color?: string;
+    tags?: string[];
+    pinned?: boolean;
+  },
+): Promise<Note> {
+  const res = await fetch(`${API_BASE}/global/notes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Global-Token": token.trim(),
+    },
+    body: JSON.stringify(payload),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function updateGlobalNote(
+  token: string,
+  noteId: string,
+  payload: {
+    title?: string | null;
+    content?: string;
+    color?: string;
+    tags?: string[];
+    pinned?: boolean;
+  },
+): Promise<Note> {
+  const res = await fetch(`${API_BASE}/global/notes/${encodeURIComponent(noteId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Global-Token": token.trim(),
+    },
+    body: JSON.stringify(payload),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function deleteGlobalNote(token: string, noteId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/global/notes/${encodeURIComponent(noteId)}`, {
+    method: "DELETE",
+    headers: {
+      "X-Global-Token": token.trim(),
+    },
+  });
+  await throwIfNotOk(res);
+}
+
