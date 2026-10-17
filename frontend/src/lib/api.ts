@@ -480,6 +480,16 @@ export async function updateGlobalToken(token: string): Promise<{ ok: boolean; g
   return res.json();
 }
 
+export async function regenerateGlobalToken(): Promise<{ ok: boolean; globalToken: string; message: string }> {
+  const res = await fetchWithTimeout(`${API_BASE}/settings/global-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ regenerate: true }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
 export interface GlobalNoteItem extends Note {
   author: string;
   files: NoteFile[];

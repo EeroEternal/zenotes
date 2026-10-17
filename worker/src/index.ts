@@ -2150,18 +2150,57 @@ async function analyzeNote(
 
 // ==================== Global Master Token & Operations ====================
 
+const LEGACY_DEFAULT_GLOBAL_TOKEN = "zenotes_master_sec_token";
+
+function generateRandomGlobalToken(): string {
+  const hex = [...crypto.getRandomValues(new Uint8Array(24))]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `zn_${hex}`;
+}
+
 async function getEffectiveGlobalToken(env: Env): Promise<string> {
+  const fromEnv = env.GLOBAL_TOKEN?.trim();
+  if (fromEnv && fromEnv !== LEGACY_DEFAULT_GLOBAL_TOKEN) {
+    return fromEnv;
+  }
+
   try {
     await ensureDbTables(env.DB);
-    const row = await env.DB.prepare("SELECT value FROM system_settings WHERE key = 'global_token'")
-      .first<{ value: string }>();
-    if (row && row.value && row.value.trim()) {
-      return row.value.trim();
+    const read = () =>
+      env.DB.prepare("SELECT value FROM system_settings WHERE key = 'global_token'")
+        .first<{ value: string }>();
+
+    const row = await read();
+    const existing = row?.value?.trim();
+    if (existing && existing !== LEGACY_DEFAULT_GLOBAL_TOKEN) {
+      return existing;
     }
+
+    const generated = generateRandomGlobalToken();
+    if (!existing) {
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO system_settings (key, value, updated_at) VALUES ('global_token', ?, datetime('now'))",
+      )
+        .bind(generated)
+        .run();
+    } else {
+      await env.DB.prepare(
+        "UPDATE system_settings SET value = ?, updated_at = datetime('now') WHERE key = 'global_token' AND value = ?",
+      )
+        .bind(generated, LEGACY_DEFAULT_GLOBAL_TOKEN)
+        .run();
+    }
+
+    const saved = (await read())?.value?.trim();
+    if (saved && saved !== LEGACY_DEFAULT_GLOBAL_TOKEN) {
+      return saved;
+    }
+    return generated;
   } catch (e) {
-    console.error("Error reading global_token from DB:", e);
+    console.error("Error reading/generating global_token from DB:", e);
+    return generateRandomGlobalToken();
   }
-  return env.GLOBAL_TOKEN?.trim() || "zenotes_master_sec_token";
 }
 
 async function verifyGlobalToken(request: Request, env: Env): Promise<boolean> {
@@ -2210,8 +2249,14 @@ async function handleUpdateGlobalToken(env: Env, request: Request): Promise<Resp
     return json(env, request, { error: "unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as { token?: string };
-  const newToken = (body.token ?? "").trim();
+  const body = (await request.json().catch(() => ({}))) as {
+    token?: string;
+    regenerate?: boolean;
+  };
+  const newToken = body.regenerate
+    ? generateRandomGlobalToken()
+    : (body.token ?? "").trim();
+
   if (!newToken || newToken.length < 4) {
     return json(
       env,
@@ -2232,7 +2277,7 @@ async function handleUpdateGlobalToken(env: Env, request: Request): Promise<Resp
 
   return json(env, request, {
     ok: true,
-    message: "Global token updated successfully",
+    message: body.regenerate ? "Global token regenerated successfully" : "Global token updated successfully",
     globalToken: newToken,
   });
 }

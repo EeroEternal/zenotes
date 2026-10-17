@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Download,
   Terminal,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ export default function Settings() {
   const [editedToken, setEditedToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
 
@@ -68,12 +70,28 @@ export default function Settings() {
     try {
       const res = await api.updateGlobalToken(next);
       setToken(res.globalToken);
+      setEditedToken(res.globalToken);
       api.setSavedGlobalToken(res.globalToken);
       toast.success("全局令牌已更新");
     } catch (e: any) {
       toast.error(e?.message || "更新全局令牌失败");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRegenerateToken = async () => {
+    setRegenerating(true);
+    try {
+      const res = await api.regenerateGlobalToken();
+      setToken(res.globalToken);
+      setEditedToken(res.globalToken);
+      api.setSavedGlobalToken(res.globalToken);
+      toast.success("已随机生成并保存新全局令牌");
+    } catch (e: any) {
+      toast.error(e?.message || "随机生成令牌失败");
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -134,7 +152,7 @@ export default function Settings() {
                 全局主令牌 (Master Global Token)
               </h2>
               <p className="text-sm text-muted-foreground mt-0.5">
-                持有此令牌可全局检索并下载全库所有笔记、文件及文件夹目录。
+                持有此令牌可全局检索、新建、编辑并下载全库所有笔记、文件及文件夹目录。系统首次使用时会自动生成高强度随机令牌。
               </p>
             </div>
           </div>
@@ -160,17 +178,28 @@ export default function Settings() {
               <Input
                 value={editedToken}
                 onChange={(e) => setEditedToken(e.target.value)}
-                placeholder="设置全局访问令牌..."
+                placeholder="加载或设置全局访问令牌..."
                 className="font-mono text-sm flex-1 min-w-0"
               />
-              <Button
-                variant="outline"
-                disabled={saving || loading || editedToken === token}
-                onClick={handleSaveToken}
-                className="shrink-0"
-              >
-                {saving ? "保存中..." : "保存修改"}
-              </Button>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  disabled={regenerating || saving || loading}
+                  onClick={handleRegenerateToken}
+                  className="gap-1.5"
+                  title="随机生成并保存新令牌"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? "animate-spin" : ""}`} />
+                  <span>{regenerating ? "生成中..." : "随机重置"}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={saving || regenerating || loading || editedToken === token}
+                  onClick={handleSaveToken}
+                >
+                  {saving ? "保存中..." : "保存修改"}
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               支持在 HTTP 请求头中传入{" "}
