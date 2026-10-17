@@ -4,7 +4,17 @@ import "./index.css";
 import { registerSW } from "virtual:pwa-register";
 import { startSyncScheduler } from "./offline/syncScheduler";
 
-registerSW({ immediate: true });
+registerSW({
+  immediate: true,
+  onRegisteredSW(swUrl, registration) {
+    if (registration) {
+      // Bypass browser HTTP cache when checking for updated sw.js
+      fetch(swUrl, { cache: "no-store" })
+        .then(() => registration.update())
+        .catch(() => {});
+    }
+  },
+});
 
 // 新版 Service Worker 接管后自动刷新：否则用户会一直跑旧缓存的 JS，
 // 表现为“改了/修了但还是老毛病”

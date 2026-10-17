@@ -262,14 +262,18 @@ export function Header({
                   <span>Sign in</span>
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem className="cursor-pointer" disabled>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onSelect={() => {
+                  navigate("/settings");
+                }}
+              >
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
-                onClick={(e) => {
-                  e.preventDefault();
+                onSelect={() => {
                   navigate("/settings");
                 }}
               >

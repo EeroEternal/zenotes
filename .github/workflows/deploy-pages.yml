@@ -77,4 +77,4 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN is not set in repository Secrets"
             exit 1
           fi
-          npx wrangler@4 pages deploy dist --project-name=zenotes
+          npx wrangler@4 pages deploy dist --project-name=zenotes --branch=main

@@ -4,20 +4,39 @@
 > Notes are formatted in Markdown with support for multi-file and directory uploads.
 
 ## Master Global Token Authentication
-Agents can access all notes and directories without session cookies by providing the master global token:
+Agents can read, search, create, edit, and export all notes and directories without session cookies by providing the master global token:
 - HTTP Header: `X-Global-Token: <YOUR_GLOBAL_TOKEN>`
 - Or HTTP Header: `Authorization: Bearer <YOUR_GLOBAL_TOKEN>`
 - Or URL Parameter: `?token=<YOUR_GLOBAL_TOKEN>`
 
 ## API Endpoints
 - **Search & List Notes**: `GET https://api.zenotes.site/api/global/notes?q={query}&token=<YOUR_GLOBAL_TOKEN>`
+- **Get Note (JSON)**: `GET https://api.zenotes.site/api/global/notes/{noteId}?token=<YOUR_GLOBAL_TOKEN>`
 - **Get Note Markdown**: `GET https://api.zenotes.site/api/global/notes/{noteId}/markdown?token=<YOUR_GLOBAL_TOKEN>`
+- **Create Note**: `POST https://api.zenotes.site/api/global/notes` (JSON `{ "title", "content", "tags", "pinned" }` or `text/markdown`)
+- **Edit / Update Note**: `PATCH https://api.zenotes.site/api/global/notes/{noteId}` (JSON `{ "title", "content", "tags", "pinned" }`)
+- **Replace Note Markdown**: `PUT https://api.zenotes.site/api/global/notes/{noteId}/markdown` (`Content-Type: text/markdown`)
+- **Delete Note**: `DELETE https://api.zenotes.site/api/global/notes/{noteId}`
 - **Download File**: `GET https://api.zenotes.site/api/global/notes/{noteId}/files/{fileId}?token=<YOUR_GLOBAL_TOKEN>`
+- **Upload File**: `POST https://api.zenotes.site/api/global/notes/{noteId}/files`
 - **Export Note ZIP**: `GET https://api.zenotes.site/api/global/notes/{noteId}/export.zip?token=<YOUR_GLOBAL_TOKEN>`
 - **Export All Notes & Directories ZIP**: `GET https://api.zenotes.site/api/global/export-all.zip?token=<YOUR_GLOBAL_TOKEN>`
 - **Web UI Global Console**: `https://zenotes.site/global?token=<YOUR_GLOBAL_TOKEN>`
 
-## Quick Example
+## Quick Examples
 ```bash
+# Search notes
 curl -s -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" "https://api.zenotes.site/api/global/notes?q="
+
+# Create a note
+curl -s -X POST "https://api.zenotes.site/api/global/notes" \
+  -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Agent Note","content":"# Hello from AI Agent","tags":["agent"]}'
+
+# Edit a note
+curl -s -X PATCH "https://api.zenotes.site/api/global/notes/<NOTE_ID>" \
+  -H "X-Global-Token: <YOUR_GLOBAL_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"# Updated Markdown Content"}'
 ```
