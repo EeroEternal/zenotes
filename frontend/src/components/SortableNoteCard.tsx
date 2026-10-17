@@ -43,10 +43,6 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
   };
 
   const raw = String(note.content ?? "");
-  const hasMedia = /(?:mynotes|zenotes):media:/i.test(raw);
-  const isLongContent = raw.length > 150;
-  /** 不用 line-clamp 套在多个子块上（纯文字在部分 WebKit 下会整块高度为 0） */
-  const longTextOnlyPreview = isLongContent && !hasMedia;
 
   return (
     <>
@@ -76,13 +72,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
           onClick={onClick}
         >
           {raw.trim() ? (
-            <div
-              className={`
-              text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words
-              ${hasMedia ? 'max-h-[min(70vh,28rem)] overflow-y-auto' : ''}
-              ${longTextOnlyPreview ? 'max-h-[6.75rem] overflow-hidden' : ''}
-            `}
-            >
+            <div className="text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words max-h-[26rem] overflow-hidden">
               {parseNoteContentToNodes(raw, note.id, 'card')}
             </div>
           ) : (

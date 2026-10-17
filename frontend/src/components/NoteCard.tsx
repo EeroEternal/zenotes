@@ -40,9 +40,6 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const raw = String(note.content ?? "");
   const preview = cardPreviewContent(raw);
-  const hasMedia = /(?:mynotes|zenotes):media:/i.test(preview);
-  const isLongContent = preview.length > 150;
-  const longTextOnlyPreview = isLongContent && !hasMedia;
 
   return (
     <>
@@ -66,13 +63,7 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
 
         <div className="p-4 pb-11">
           {preview.trim() ? (
-            <div
-              className={`
-              text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words overflow-hidden
-              ${hasMedia ? "max-h-[min(50vh,22rem)]" : ""}
-              ${longTextOnlyPreview ? "max-h-[6.75rem]" : ""}
-            `}
-            >
+            <div className="text-sm text-foreground/75 leading-relaxed min-h-[1.1em] break-words max-h-[26rem] overflow-hidden">
               {parseNoteContentToNodes(preview, note.id, "card")}
             </div>
           ) : (
