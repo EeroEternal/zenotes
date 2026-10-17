@@ -101,7 +101,7 @@ async function processSyncQueueInner() {
   }
 }
 
-async function executeOperation(op: { type: string; entityId: string; payload: Record<string, unknown> }): Promise<boolean> {
+async function executeOperation(op: { id?: number; type: string; entityId: string; payload: Record<string, unknown> }): Promise<boolean> {
   switch (op.type) {
     case "CREATE_NOTE": {
       const claimed = await claimCreateNote(op.entityId);
@@ -113,10 +113,11 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
       if (typeof p.title === "string" && p.title) createBody.title = p.title;
       if (typeof p.color === "string") createBody.color = p.color;
       if (Array.isArray(p.tags)) createBody.tags = p.tags;
+      if (typeof p.pinned === "boolean") createBody.pinned = p.pinned;
 
       try {
         const serverNote = await api.createNote(createBody as any);
-        await markNoteSynced(op.entityId, serverNote as any);
+        await markNoteSynced(op.entityId, serverNote as any, op.id);
         const finalId = serverNote?.id || op.entityId;
         await syncImagesForNote(finalId);
       } catch (err) {
@@ -137,8 +138,8 @@ async function executeOperation(op: { type: string; entityId: string; payload: R
       if (Array.isArray(p.tags)) updateBody.tags = p.tags;
       if (typeof p.pinned === "boolean") updateBody.pinned = p.pinned;
 
-      await api.updateNote(op.entityId, updateBody as any);
-      await markNoteSynced(op.entityId);
+      const serverNote = await api.updateNote(op.entityId, updateBody as any);
+      await markNoteSynced(op.entityId, serverNote as any, op.id);
       await syncImagesForNote(op.entityId);
       break;
     }

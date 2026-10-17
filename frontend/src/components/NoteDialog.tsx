@@ -395,6 +395,16 @@ export function NoteDialog({
         <div className="absolute top-4 right-4 flex items-center gap-1 z-10">
           <button
             type="button"
+            onClick={() => onTogglePin(note.id)}
+            className={`p-2 rounded-xl hover:bg-foreground/8 transition-colors ${
+              note.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={note.pinned ? '取消置顶 (Unpin)' : '置顶 (Pin)'}
+          >
+            <Pin className={`w-5 h-5 ${note.pinned ? 'fill-current' : ''}`} />
+          </button>
+          <button
+            type="button"
             onClick={handleCopyContent}
             className="p-2 rounded-xl hover:bg-foreground/8 transition-colors text-muted-foreground hover:text-foreground"
             title="复制全部内容"

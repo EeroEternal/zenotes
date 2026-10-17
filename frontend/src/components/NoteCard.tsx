@@ -54,11 +54,19 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
         `}
         onClick={onClick}
       >
-        {/* Pin indicator */}
+        {/* Pin indicator (click to unpin) */}
         {note.pinned && (
-          <div className="absolute top-2 right-2 z-10 w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg animate-pop">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin();
+            }}
+            title="取消置顶 (Unpin)"
+            className="absolute top-2 right-2 z-20 w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg animate-pop hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+          >
             <Pin className="w-3.5 h-3.5 text-primary-foreground fill-current" />
-          </div>
+          </button>
         )}
 
         <div className="p-4 pb-11">
@@ -109,10 +117,11 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
         
         {/* Hover Actions */}
         <div className="
-          absolute bottom-2 left-2 right-2 flex items-center gap-0.5
+          absolute bottom-2 left-2 right-2 z-10 flex items-center gap-0.5
           opacity-0 group-hover:opacity-100 transition-opacity duration-300
         ">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onTogglePin();
@@ -121,11 +130,12 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
               p-2 rounded-lg hover:bg-foreground/8 transition-all duration-200
               ${note.pinned ? 'text-primary' : 'text-muted-foreground'}
             `}
-            title={note.pinned ? 'Unpin' : 'Pin'}
+            title={note.pinned ? '取消置顶 (Unpin)' : '置顶 (Pin)'}
           >
             <Pin className={`w-4 h-4 ${note.pinned ? 'fill-current' : ''}`} />
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setShareDialogOpen(true);
@@ -139,6 +149,7 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
             <Share2 className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={(e) => e.stopPropagation()}
             className="p-2 rounded-lg text-muted-foreground hover:bg-foreground/8 transition-all duration-200 ml-auto"
           >

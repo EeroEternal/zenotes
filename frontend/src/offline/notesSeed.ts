@@ -2,22 +2,29 @@ import type { Note } from "@/types/note";
 import * as api from "@/lib/api";
 import { db } from "./db";
 import { processSyncQueue } from "./syncEngine";
+import { getLastLocalModifiedAt } from "./localNoteApi";
 
 /** Merge server notes into IndexedDB without resurrecting locally deleted tombstones. */
 export async function mergeServerNotesIntoLocal(
   notes: Note[],
-  opts: { purgeMissing?: boolean; knownServerIds?: Set<string> } = {},
+  opts: { purgeMissing?: boolean; knownServerIds?: Set<string>; fetchStartedAt?: number } = {},
 ) {
   // 登出后，登出前已在飞行中的 seed 不得把笔记写回本地（复活）
   if (api.isSignedOut()) return;
   const purgeMissing = opts.purgeMissing === true;
+  const fetchStartedAt = opts.fetchStartedAt;
+  const allPendingOps = await db.syncQueue.toArray();
   const pendingCreates = new Set(
-    (await db.syncQueue.where("type").equals("CREATE_NOTE").toArray()).map((op) => op.entityId),
+    allPendingOps.filter((op) => op.type === "CREATE_NOTE").map((op) => op.entityId),
   );
+  const pendingEntityIds = new Set(allPendingOps.map((op) => op.entityId));
 
   await db.transaction("rw", db.notes, async () => {
     for (const note of notes) {
-      if (pendingCreates.has(note.id)) continue;
+      if (pendingCreates.has(note.id) || pendingEntityIds.has(note.id)) continue;
+      if (fetchStartedAt !== undefined && getLastLocalModifiedAt(note.id) >= fetchStartedAt) {
+        continue;
+      }
 
       const exists = await db.notes.get(note.id);
       if (exists?.isDeleted) continue;
@@ -100,6 +107,7 @@ export async function pullServerNotes() {
   let loaded = 0;
 
   do {
+    const fetchStartedAt = Date.now();
     const data = await fetchNotesPage(page);
     const batch = data.notes ?? [];
     total = data.pagination?.total ?? loaded + batch.length;
@@ -112,7 +120,7 @@ export async function pullServerNotes() {
     }
 
     for (const n of batch) serverIds.add(n.id);
-    await mergeServerNotesIntoLocal(batch, { purgeMissing: false });
+    await mergeServerNotesIntoLocal(batch, { purgeMissing: false, fetchStartedAt });
     loaded += batch.length;
     console.info(`[notes seed] page ${page}/${totalPages} (+${batch.length}, local ${loaded}/${total})`);
 

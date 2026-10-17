@@ -211,8 +211,8 @@ function useNotesService() {
     networkMode: "always",
     onSuccess: () => {
       setPage(1);
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
       if (isOnline) requestSync();
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "保存失败，请稍后重试";
@@ -225,8 +225,8 @@ function useNotesService() {
       updateLocalNote(id, updates as NoteInput),
     networkMode: "always",
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
       if (isOnline) requestSync();
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "更新失败，请稍后重试";
@@ -238,9 +238,9 @@ function useNotesService() {
     mutationFn: (id: string) => deleteLocalNote(id),
     networkMode: "always",
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
       toast.success("Note deleted");
       if (isOnline) requestSync();
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "删除失败，请稍后重试";
@@ -268,15 +268,20 @@ function useNotesService() {
       // Sync to server when online
       if (vars.pinnedChanged) {
         await updateLocalNote(vars.activeId, { pinned: vars.destPinned });
+        if (isOnline) {
+          await api.updateNote(vars.activeId, { pinned: vars.destPinned });
+        }
       }
-      await Promise.all([
-        api.reorderNotes(true, vars.pinnedIds),
-        api.reorderNotes(false, vars.unpinnedIds),
-      ]);
+      if (isOnline) {
+        await Promise.all([
+          api.reorderNotes(true, vars.pinnedIds),
+          api.reorderNotes(false, vars.unpinnedIds),
+        ]);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
       if (isOnline) requestSync();
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
     onError: (err) => {
       const msg = err instanceof ApiError ? err.message : "Reorder failed";
@@ -313,7 +318,7 @@ function useNotesService() {
     (id: string) => {
       const note = allNotes.find((n) => n.id === id);
       if (!note) return;
-      updateNoteMutation.mutate({ id, updates: { pinned: !note.pinned } });
+      updateNoteMutation.mutate({ id, updates: { pinned: !Boolean(note.pinned) } });
     },
     [allNotes, updateNoteMutation],
   );

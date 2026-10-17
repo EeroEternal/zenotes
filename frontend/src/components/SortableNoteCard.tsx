@@ -49,6 +49,8 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
       <div
         ref={setNodeRef}
         style={style}
+        {...attributes}
+        {...listeners}
         className={`
           masonry-item group relative rounded-2xl cursor-pointer
           border border-border/40 hover:border-border/80
@@ -59,11 +61,20 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
           ${isDragging ? 'shadow-note-active opacity-90 scale-105 z-50' : ''}
         `}
       >
-        {/* Pin indicator */}
+        {/* Pin indicator (click to unpin) */}
         {note.pinned && (
-          <div className="absolute top-2 right-2 z-10 w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg animate-pop">
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin();
+            }}
+            title="取消置顶 (Unpin)"
+            className="absolute top-2 right-2 z-20 w-7 h-7 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg animate-pop hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+          >
             <Pin className="w-3.5 h-3.5 text-primary-foreground fill-current" />
-          </div>
+          </button>
         )}
 
         {/* Content - clickable area */}
@@ -117,11 +128,15 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
         </div>
         
         {/* 底栏：小屏/触摸无 hover，始终显示；桌面端可悬停再显 */}
-        <div className="
-          absolute bottom-2 left-2 right-2 flex items-center gap-0.5
-          opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300
-        ">
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="
+            absolute bottom-2 left-2 right-2 z-10 flex items-center gap-0.5
+            opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300
+          "
+        >
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onTogglePin();
@@ -130,11 +145,12 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
               p-2 rounded-lg hover:bg-foreground/8 transition-all duration-200
               ${note.pinned ? 'text-primary' : 'text-muted-foreground'}
             `}
-            title={note.pinned ? 'Unpin' : 'Pin'}
+            title={note.pinned ? '取消置顶 (Unpin)' : '置顶 (Pin)'}
           >
             <Pin className={`w-4 h-4 ${note.pinned ? 'fill-current' : ''}`} />
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setShareDialogOpen(true);
@@ -148,6 +164,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             <Share2 className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -157,6 +174,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
             <Palette className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onDelete?.();

@@ -51,27 +51,38 @@ export async function createLocalNote(input: NoteInput = {}) {
   return note;
 }
 
+const lastLocalModifiedAt = new Map<string, number>();
+
+export function getLastLocalModifiedAt(id: string): number {
+  return lastLocalModifiedAt.get(id) ?? 0;
+}
+
 export async function updateLocalNote(id: string, input: NoteInput) {
-  const existing = await db.notes.get(id);
-  if (!existing) throw new Error(`Note not found: ${id}`);
-  const updates: Partial<LocalNote> = {
-    ...input,
-    updatedAt: nowIso(),
-    syncStatus: "pending",
-  };
-  await db.notes.update(id, updates);
-  const updated = { ...existing, ...updates } as LocalNote;
-  await db.syncQueue.add({
-    type: "UPDATE_NOTE",
-    entityId: id,
-    payload: updated,
-    retries: 0,
-    createdAt: Date.now(),
+  return db.transaction("rw", [db.notes, db.syncQueue], async () => {
+    const existing = await db.notes.get(id);
+    if (!existing) throw new Error(`Note not found: ${id}`);
+    const now = Date.now();
+    lastLocalModifiedAt.set(id, now);
+    const updates: Partial<LocalNote> = {
+      ...input,
+      updatedAt: nowIso(),
+      syncStatus: "pending",
+    };
+    await db.notes.update(id, updates);
+    const updated = { ...existing, ...updates } as LocalNote;
+    await db.syncQueue.add({
+      type: "UPDATE_NOTE",
+      entityId: id,
+      payload: { ...input },
+      retries: 0,
+      createdAt: now,
+    });
+    return updated;
   });
-  return updated;
 }
 
 export async function deleteLocalNote(id: string) {
+  lastLocalModifiedAt.set(id, Date.now());
   await db.notes.update(id, { isDeleted: true, syncStatus: "pending", updatedAt: nowIso() });
   await db.syncQueue.add({
     type: "DELETE_NOTE",
@@ -91,7 +102,7 @@ export async function getLocalNote(id: string) {
   return db.notes.get(id);
 }
 
-export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>) {
+export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>, completedOpId?: number) {
   await db.transaction("rw", [db.notes, db.syncQueue, db.images], async () => {
     const existing = await db.notes.get(id);
     if (!existing) return;
@@ -141,6 +152,12 @@ export async function markNoteSynced(id: string, serverNote?: Partial<LocalNote>
         await db.images.update(img.id, { noteId: serverId });
       }
     } else {
+      const remainingOps = (await db.syncQueue.where("entityId").equals(id).toArray()).filter(
+        (op) => op.id !== completedOpId,
+      );
+      if (remainingOps.length > 0) {
+        return;
+      }
       // Just update the note as synced
       await db.notes.update(id, {
         ...serverNote,
