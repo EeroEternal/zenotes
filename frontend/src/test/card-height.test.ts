@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { cardBodyMaxHeightClass } from "@/components/NoteCardContent";
+import { cardPreviewContent, truncatePreview } from "@/lib/card-preview";
 
-describe("card body max height", () => {
-  it("keeps short notes tall and clamps long notes", () => {
-    expect(cardBodyMaxHeightClass("短笔记")).toBe("max-h-[22rem]");
-    expect(cardBodyMaxHeightClass("中".repeat(300))).toBe("max-h-[16rem]");
-    expect(cardBodyMaxHeightClass("长".repeat(2000))).toBe("max-h-[12rem]");
+describe("card preview", () => {
+  it("keeps short notes as-is and truncates long ones", () => {
+    expect(cardPreviewContent("短笔记")).toBe("短笔记");
+    const long = "长".repeat(1000);
+    const preview = cardPreviewContent(long);
+    expect(preview.length).toBeLessThanOrEqual(401);
+    expect(preview.endsWith("…")).toBe(true);
+  });
+
+  it("drops a half-cut image markdown", () => {
+    const withImage = `前面文字\n![图片](zenotes:media:12345678-1234-1234-1234-123456789abc)`;
+    const cut = truncatePreview(withImage, 10);
+    expect(cut).not.toContain("![图片]");
   });
 });

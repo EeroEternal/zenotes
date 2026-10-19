@@ -4,13 +4,11 @@ import { Paperclip, Globe } from 'lucide-react';
 import { parseNoteContentToNodes } from '@/lib/note-media';
 import { Badge } from '@/components/ui/badge';
 
-/** 正文越长，卡片上限越矮：短笔记自然展示，长笔记裁剪，避免瀑布流里出现超长卡片 */
-export function cardBodyMaxHeightClass(text: string): string {
-  const len = text.trim().length;
-  if (len <= 200) return 'max-h-[22rem]';
-  if (len <= 600) return 'max-h-[16rem]';
-  return 'max-h-[12rem]';
-}
+/**
+ * 卡片正文高度上限：只是安全网（预览文本已截断，正常不会触发）；
+ * 超长时裁剪并渐隐，保留瀑布流里参差的自然高度。
+ */
+export const CARD_BODY_MAX_HEIGHT_CLASS = 'max-h-[20rem]';
 
 interface NoteCardContentProps {
   note: Note;
@@ -39,7 +37,7 @@ export function NoteCardContent({ note, text, onTagClick }: NoteCardContentProps
         ref={bodyRef}
         className={`
           text-sm text-foreground/75 leading-relaxed break-words overflow-hidden
-          ${cardBodyMaxHeightClass(text)}
+          ${CARD_BODY_MAX_HEIGHT_CLASS}
           ${clamped ? 'card-body-fade' : ''}
         `}
       >

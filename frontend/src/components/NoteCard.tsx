@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Note, NoteColor } from '@/types/note';
 import { Pin, MoreVertical, Share2 } from 'lucide-react';
+import { cardPreviewContent } from '@/lib/card-preview';
 import { ShareDialog } from './ShareDialog';
 import { NoteCardContent } from './NoteCardContent';
 
@@ -21,19 +22,6 @@ const colorClasses: Record<NoteColor, string> = {
 };
 
 /** Card preview: drop HTML comment markers; keep image + short AI caption only. */
-function cardPreviewContent(raw: string): string {
-  let s = raw.replace(/<!--\s*zenotes:ai-summary\s*-->/gi, "").trim();
-  const aiIdx = s.search(/^##\s*AI\s*总结\s*$/m);
-  if (aiIdx !== -1) {
-    const before = s.slice(0, aiIdx).trimEnd();
-    let after = s.slice(aiIdx).replace(/^##\s*AI\s*总结\s*/m, "").trim();
-    // Drop legacy OCR dump if still present in older notes
-    after = after.replace(/\n###\s*OCR\s*原文[\s\S]*$/i, "").trim();
-    if (after.length > 280) after = `${after.slice(0, 280).trimEnd()}…`;
-    return [before, after].filter(Boolean).join("\n\n");
-  }
-  return s;
-}
 
 export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardProps) {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);

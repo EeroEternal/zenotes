@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Note, NoteColor } from '@/types/note';
 import { Pin, Palette, Trash2, Share2 } from 'lucide-react';
+import { cardPreviewContent } from '@/lib/card-preview';
 import { ShareDialog } from './ShareDialog';
 import { NoteCardContent } from './NoteCardContent';
 
@@ -41,7 +42,7 @@ export function SortableNoteCard({ note, onClick, onTogglePin, onDelete, onTagCl
     zIndex: isDragging ? 50 : undefined,
   };
 
-  const raw = String(note.content ?? "");
+  const raw = cardPreviewContent(String(note.content ?? ""));
 
   return (
     <>
