@@ -113,34 +113,15 @@
     width: 100%;
   }
 
+  /* 瀑布流由 MasonryGrid 绝对定位排布，这里只做容器 */
   .masonry-grid {
-    column-count: 1;
-    column-gap: 1rem;
-  }
-
-  @media (min-width: 480px) {
-    .masonry-grid {
-      column-count: 2;
-    }
-  }
-
-  @media (min-width: 768px) {
-    .masonry-grid {
-      column-count: 3;
-      column-gap: 1.25rem;
-    }
-  }
-
-  @media (min-width: 1100px) {
-    .masonry-grid {
-      column-count: 4;
-    }
+    position: relative;
+    width: 100%;
   }
 
   .masonry-item {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 1rem;
     display: block;
     width: 100%;
     height: fit-content;

@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useState } from 'react';
 import { NoteCard } from './NoteCard';
+import { MasonryGrid } from './MasonryGrid';
 
 const PINNED_CONTAINER_ID = 'pinned';
 const UNPINNED_CONTAINER_ID = 'unpinned';
@@ -112,7 +113,7 @@ export function NotesGrid({
               </h2>
               {pinnedNotes.length > 0 ? (
                 <SortableContext items={pinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
-                  <div className="masonry-grid">
+                  <MasonryGrid className="masonry-grid">
                     {pinnedNotes.map((note) => (
                       <SortableNoteCard
                         key={note.id}
@@ -123,7 +124,7 @@ export function NotesGrid({
                         onTagClick={onTagClick}
                       />
                     ))}
-                  </div>
+                  </MasonryGrid>
                 </SortableContext>
               ) : (
                 <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
@@ -145,7 +146,7 @@ export function NotesGrid({
               )}
               {unpinnedNotes.length > 0 ? (
                 <SortableContext items={unpinnedNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
-                  <div className="masonry-grid">
+                  <MasonryGrid className="masonry-grid">
                     {unpinnedNotes.map((note) => (
                       <SortableNoteCard
                         key={note.id}
@@ -156,7 +157,7 @@ export function NotesGrid({
                         onTagClick={onTagClick}
                       />
                     ))}
-                  </div>
+                  </MasonryGrid>
                 </SortableContext>
               ) : (
                 <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
