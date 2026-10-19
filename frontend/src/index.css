@@ -157,6 +157,12 @@
     overflow: hidden;
   }
 
+  /* 卡片正文超出上限时，底部渐隐提示还有内容 */
+  .card-body-fade {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+  }
+
   [data-note-dialog-editor] .tiptap p.is-empty::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground) / 0.65);

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Note, NoteColor } from '@/types/note';
-import { Pin, MoreVertical, Paperclip, Share2, Globe } from 'lucide-react';
-import { parseNoteContentToNodes } from '@/lib/note-media';
-import { Badge } from "@/components/ui/badge";
+import { Pin, MoreVertical, Share2 } from 'lucide-react';
 import { ShareDialog } from './ShareDialog';
+import { NoteCardContent } from './NoteCardContent';
 
 interface NoteCardProps {
   note: Note;
@@ -70,49 +69,7 @@ export function NoteCard({ note, onClick, onTogglePin, onTagClick }: NoteCardPro
         )}
 
         <div className="p-4 pb-11">
-          {preview.trim() ? (
-            <div className="text-sm text-foreground/75 leading-relaxed break-words">
-              {parseNoteContentToNodes(preview, note.id, "card")}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground/50">无正文</p>
-          )}
-
-          {/* Attachments and Share status badges */}
-          {((note.files && note.files.length > 0) || note.share?.isPublic) && (
-            <div className="mt-3 flex flex-wrap gap-1.5 items-center">
-              {note.files && note.files.length > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground/80 bg-foreground/[0.06] border border-border/40 px-2 py-0.5 rounded-lg">
-                  <Paperclip className="w-3 h-3 text-muted-foreground" />
-                  {note.files.length} 个附件
-                </span>
-              )}
-              {note.share?.isPublic && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-lg">
-                  <Globe className="w-3 h-3" />
-                  已公开
-                </span>
-              )}
-            </div>
-          )}
-
-          {note.tags?.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {note.tags.slice(0, 4).map((t) => (
-                <Badge
-                  key={t}
-                  variant="secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTagClick?.(t);
-                  }}
-                  className="cursor-pointer"
-                >
-                  {t}
-                </Badge>
-              ))}
-            </div>
-          )}
+          <NoteCardContent note={note} text={preview} onTagClick={onTagClick} />
         </div>
         
         {/* Hover Actions */}
