@@ -869,6 +869,11 @@ export default {
         return sendGlobalEmail(request, env);
       }
 
+      // Global LLM Translate & Summarize endpoint
+      if (path === "/api/global/llm" && request.method === "POST") {
+        return handleGlobalLlm(request, env);
+      }
+
       // Global single note export (ZIP of note + its files/directories)
       const globalNoteZipMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/export\.zip\/?$/);
       if (globalNoteZipMatch && request.method === "GET") {
@@ -3124,5 +3129,80 @@ async function sendGlobalEmail(request: Request, env: Env): Promise<Response> {
       hint: "Ensure lipicoder@qq.com is a verified destination address in Cloudflare Dashboard -> zenotes.site -> Email -> Email Routing -> Destination addresses.",
     },
     { status: 502 }
+  );
+}
+
+async function handleGlobalLlm(request: Request, env: Env): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 }
+    );
+  }
+  const body = (await request.json().catch(() => ({}))) as {
+    system?: string;
+    prompt?: string;
+    model?: string;
+  };
+  const prompt = (body.prompt || "").trim();
+  if (!prompt) {
+    return json(env, request, { error: "missing_prompt" }, { status: 400 });
+  }
+  const messages = [
+    ...(body.system ? [{ role: "system", content: body.system }] : []),
+    { role: "user", content: prompt },
+  ];
+
+  // Try OpenRouter first, then DeepSeek
+  if (env.OPENROUTER_API_KEY) {
+    try {
+      const model =
+        body.model ||
+        env.OPENROUTER_SUMMARY_MODEL ||
+        "mistralai/mistral-small-3.2-24b-instruct";
+      const { content } = await openRouterChat(env, {
+        model,
+        temperature: 0.2,
+        messages,
+      });
+      return json(env, request, { ok: true, provider: "openrouter", model, content });
+    } catch (err: any) {
+      if (!env.DEEPSEEK_API_KEY) {
+        return json(env, request, { ok: false, error: err?.message || String(err) }, { status: 502 });
+      }
+    }
+  }
+
+  if (env.DEEPSEEK_API_KEY) {
+    try {
+      const res = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.2,
+          messages,
+        }),
+      });
+      const data: any = await res.json();
+      const content = data?.choices?.[0]?.message?.content || "";
+      if (content) {
+        return json(env, request, { ok: true, provider: "deepseek", content });
+      }
+    } catch (err: any) {
+      return json(env, request, { ok: false, error: err?.message || String(err) }, { status: 502 });
+    }
+  }
+
+  return json(
+    env,
+    request,
+    { ok: false, error: "no_llm_key_configured_on_worker" },
+    { status: 501 }
   );
 }
