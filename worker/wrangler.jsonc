@@ -31,5 +31,10 @@
 			"binding": "ARTIFACTS",
 			"namespace": "agent-repos"
 		}
+	],
+	"send_email": [
+		{
+			"name": "SEND_EMAIL"
+		}
 	]
 }

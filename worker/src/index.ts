@@ -97,6 +97,10 @@ export interface Env {
   GLOBAL_TOKEN?: string;
   /** 会话签名密钥；不配置则首次使用时自动生成并存入 D1 system_settings */
   SESSION_SECRET?: string;
+  /** Cloudflare Email Routing send_email binding */
+  SEND_EMAIL?: {
+    send(message: unknown): Promise<void>;
+  };
 }
 
 const ARGON2_MIGRATION_MSG =
@@ -858,6 +862,11 @@ export default {
         if (request.method === "POST") {
           return createGlobalNote(request, env);
         }
+      }
+
+      // Global Cloudflare Mail Send endpoint
+      if (path === "/api/global/send-email" && request.method === "POST") {
+        return sendGlobalEmail(request, env);
       }
 
       // Global single note export (ZIP of note + its files/directories)
@@ -2937,4 +2946,183 @@ curl -s -X PATCH "https://api.zenotes.site/api/global/notes/<NOTE_ID>" \\
       "Cache-Control": "public, max-age=300",
     }),
   });
+}
+
+function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  return bytesToBase64(bytes);
+}
+
+function buildMimeMessage(params: {
+  from: string;
+  fromName?: string;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  attachmentFilename?: string;
+  attachmentBase64?: string;
+}): string {
+  const msgId = `<${crypto.randomUUID()}@zenotes.site>`;
+  const dateHeader = new Date().toUTCString();
+  const encodedSubject = `=?UTF-8?B?${utf8ToBase64(params.subject)}?=`;
+  const fromHeader = params.fromName
+    ? `"=?UTF-8?B?${utf8ToBase64(params.fromName)}?=" <${params.from}>`
+    : params.from;
+
+  const mixedBoundary = `----=_Mixed_${crypto.randomUUID().replace(/-/g, "")}`;
+  const altBoundary = `----=_Alt_${crypto.randomUUID().replace(/-/g, "")}`;
+
+  const lines: string[] = [
+    `From: ${fromHeader}`,
+    `To: <${params.to}>`,
+    `Subject: ${encodedSubject}`,
+    `Date: ${dateHeader}`,
+    `Message-ID: ${msgId}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+    "",
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+    `--${altBoundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    utf8ToBase64(params.text),
+    "",
+  ];
+
+  if (params.html) {
+    lines.push(
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      utf8ToBase64(params.html),
+      ""
+    );
+  }
+  lines.push(`--${altBoundary}--`, "");
+
+  if (params.attachmentFilename && params.attachmentBase64) {
+    lines.push(
+      `--${mixedBoundary}`,
+      `Content-Type: text/markdown; charset="UTF-8"; name="${params.attachmentFilename}"`,
+      `Content-Disposition: attachment; filename="${params.attachmentFilename}"`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      params.attachmentBase64,
+      ""
+    );
+  }
+
+  lines.push(`--${mixedBoundary}--`, "");
+  return lines.join("\r\n");
+}
+
+async function sendGlobalEmail(request: Request, env: Env): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 }
+    );
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    to?: string;
+    from?: string;
+    fromName?: string;
+    subject?: string;
+    text?: string;
+    html?: string;
+    attachmentFilename?: string;
+    attachmentBase64?: string;
+  };
+
+  const to = (body.to || "lipicoder@qq.com").trim();
+  const from = (body.from || "digest@zenotes.site").trim();
+  const fromName = (body.fromName || "Zenotes XThread Daily").trim();
+  const subject = (body.subject || "Zenotes Daily Digest").trim();
+  const text = body.text || "";
+  const html = body.html || "";
+
+  const rawMime = buildMimeMessage({
+    from,
+    fromName,
+    to,
+    subject,
+    text,
+    html,
+    attachmentFilename: body.attachmentFilename,
+    attachmentBase64: body.attachmentBase64,
+  });
+
+  const errors: string[] = [];
+
+  // 1. Primary: Cloudflare Email Routing `send_email` binding (`env.SEND_EMAIL`)
+  if (env.SEND_EMAIL && typeof env.SEND_EMAIL.send === "function") {
+    try {
+      const cfEmailMod = (await import("cloudflare:email")) as {
+        EmailMessage: new (from: string, to: string, raw: string) => unknown;
+      };
+      const msg = new cfEmailMod.EmailMessage(from, to, rawMime);
+      await env.SEND_EMAIL.send(msg);
+      return json(env, request, {
+        ok: true,
+        provider: "cloudflare:email",
+        to,
+        from,
+        subject,
+      });
+    } catch (err: any) {
+      errors.push(`cloudflare:email error: ${err?.message || String(err)}`);
+    }
+  } else {
+    errors.push("SEND_EMAIL binding not present on worker");
+  }
+
+  // 2. Fallback: Cloudflare Worker MailChannels integration
+  try {
+    const mcRes = await fetch("https://api.mailchannels.net/tx/v1/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: from, name: fromName },
+        subject,
+        content: [
+          { type: "text/plain", value: text },
+          ...(html ? [{ type: "text/html", value: html }] : []),
+        ],
+      }),
+    });
+    if (mcRes.ok) {
+      return json(env, request, {
+        ok: true,
+        provider: "cloudflare-mailchannels",
+        to,
+        from,
+        subject,
+      });
+    }
+    const mcErr = await mcRes.text().catch(() => "");
+    errors.push(`mailchannels status ${mcRes.status}: ${mcErr.slice(0, 200)}`);
+  } catch (err: any) {
+    errors.push(`mailchannels error: ${err?.message || String(err)}`);
+  }
+
+  return json(
+    env,
+    request,
+    {
+      ok: false,
+      error: "email_send_failed",
+      details: errors,
+      hint: "Ensure lipicoder@qq.com is a verified destination address in Cloudflare Dashboard -> zenotes.site -> Email -> Email Routing -> Destination addresses.",
+    },
+    { status: 502 }
+  );
 }
