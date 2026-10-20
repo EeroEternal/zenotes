@@ -874,6 +874,13 @@ export default {
         return handleGlobalLlm(request, env);
       }
 
+      // Global persistent X.com session store (backed by D1 system_settings for stateless sandboxes)
+      if (path === "/api/global/x-session") {
+        if (request.method === "GET" || request.method === "POST") {
+          return handleGlobalXSession(request, env);
+        }
+      }
+
       // Global single note export (ZIP of note + its files/directories)
       const globalNoteZipMatch = path.match(/^\/api\/global\/notes\/([^/]+)\/export\.zip\/?$/);
       if (globalNoteZipMatch && request.method === "GET") {
@@ -3205,4 +3212,55 @@ async function handleGlobalLlm(request: Request, env: Env): Promise<Response> {
     { ok: false, error: "no_llm_key_configured_on_worker" },
     { status: 501 }
   );
+}
+
+async function handleGlobalXSession(request: Request, env: Env): Promise<Response> {
+  if (!(await verifyGlobalToken(request, env))) {
+    return json(
+      env,
+      request,
+      { error: "unauthorized", message: "Invalid or missing global token" },
+      { status: 401 }
+    );
+  }
+  await ensureDbTables(env.DB);
+  const SETTING_KEY = "x_session_cookies";
+
+  if (request.method === "GET") {
+    const row = await env.DB.prepare(
+      "SELECT value, updated_at FROM system_settings WHERE key = ?"
+    )
+      .bind(SETTING_KEY)
+      .first<{ value: string; updated_at: string }>();
+    if (!row) {
+      return json(env, request, { ok: true, session: null });
+    }
+    try {
+      return json(env, request, {
+        ok: true,
+        session: JSON.parse(row.value),
+        updatedAt: row.updated_at,
+      });
+    } catch {
+      return json(env, request, { ok: true, session: null });
+    }
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    auth_token?: string;
+    ct0?: string;
+    handle?: string;
+  };
+  const payload = JSON.stringify({
+    auth_token: (body.auth_token || "").trim(),
+    ct0: (body.ct0 || "").trim(),
+    handle: (body.handle || "").trim(),
+  });
+  await env.DB.prepare(
+    "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+  )
+    .bind(SETTING_KEY, payload)
+    .run();
+
+  return json(env, request, { ok: true, updated: true });
 }
