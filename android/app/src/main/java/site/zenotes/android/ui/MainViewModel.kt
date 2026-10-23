@@ -221,7 +221,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(isLoadingNotes = true) }
             }
             try {
-                val notes = api.fetchAllNotes()
+                // 第一页先显示，剩余页在后台继续追加；后页失败不再打断已同步内容
+                val notes = api.fetchAllNotes { partial ->
+                    _uiState.update {
+                        it.copy(
+                            notes = partial,
+                            isLoadingNotes = false
+                        )
+                    }
+                }
                 _uiState.update {
                     it.copy(
                         notes = notes,

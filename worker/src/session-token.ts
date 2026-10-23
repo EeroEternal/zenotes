@@ -45,10 +45,17 @@ export async function verifySessionToken(raw: string, secret: string, now = Date
   const exp = Number(expStr);
   if (!Number.isSafeInteger(userId) || userId <= 0 || now > exp) return null;
   const key = await hmacKey(secret);
+  let sigBytes: Uint8Array;
+  try {
+    // 一个被截断/改坏的签名会让 atob 抛错；按无效 token 处理，不要变成 500
+    sigBytes = b64urlDecode(sig);
+  } catch {
+    return null;
+  }
   const ok = await crypto.subtle.verify(
     "HMAC",
     key,
-    b64urlDecode(sig),
+    sigBytes,
     new TextEncoder().encode(`${uidStr}.${expStr}`),
   );
   return ok ? userId : null;

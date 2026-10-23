@@ -121,37 +121,50 @@ class ZeNotesApi(private val sessionStore: SessionStore) {
         }
     }
 
-    suspend fun fetchAllNotes(): List<Note> = withContext(Dispatchers.IO) {
-        val allNotes = mutableListOf<Note>()
-        var page = 1
-        val pageSize = 100
-        while (true) {
-            val req = Request.Builder()
-                .url("${baseUrl()}/notes?page=$page&pageSize=$pageSize")
-                .get()
-                .build()
+    /**
+     * 逐页拉取笔记；每拉到一页就回调一次，靠前的页先展示。
+     * 后续页失败时保留已拿到的部分，只有第一页失败才抛异常。
+     */
+    suspend fun fetchAllNotes(onPage: ((List<Note>) -> Unit)? = null): List<Note> =
+        withContext(Dispatchers.IO) {
+            val allNotes = mutableListOf<Note>()
+            var page = 1
+            val pageSize = 100
+            while (true) {
+                val req = Request.Builder()
+                    .url("${baseUrl()}/notes?page=$page&pageSize=$pageSize")
+                    .get()
+                    .build()
 
-            val (pageNotes, totalPages) = executeJson(req) { json ->
-                val arr = json.optJSONArray("notes") ?: JSONArray()
-                val parsed = buildList {
-                    for (i in 0 until arr.length()) {
-                        val obj = arr.optJSONObject(i) ?: continue
-                        add(SessionStore.parseNoteJson(obj))
+                val result = try {
+                    executeJson(req) { json ->
+                        val arr = json.optJSONArray("notes") ?: JSONArray()
+                        val parsed = buildList {
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.optJSONObject(i) ?: continue
+                                add(SessionStore.parseNoteJson(obj))
+                            }
+                        }
+                        val pagination = json.optJSONObject("pagination")
+                        val totalP = pagination?.optInt("totalPages", 1) ?: 1
+                        parsed to totalP
                     }
+                } catch (e: Exception) {
+                    // 401 仍要冒泡，让 UI 走重新登录；其余后续页错误保留已拿到的笔记
+                    if (allNotes.isEmpty() || (e is ApiException && e.statusCode == 401)) throw e
+                    break
                 }
-                val pagination = json.optJSONObject("pagination")
-                val totalP = pagination?.optInt("totalPages", 1) ?: 1
-                parsed to totalP
+                val (pageNotes, totalPages) = result
+                allNotes.addAll(pageNotes)
+                onPage?.invoke(allNotes.toList())
+                if (page >= totalPages || pageNotes.isEmpty() || page >= 20) {
+                    break
+                }
+                page++
             }
-            allNotes.addAll(pageNotes)
-            if (page >= totalPages || pageNotes.isEmpty() || page >= 20) {
-                break
-            }
-            page++
+            sessionStore.saveCachedNotes(allNotes)
+            allNotes
         }
-        sessionStore.saveCachedNotes(allNotes)
-        allNotes
-    }
 
     suspend fun createNote(
         title: String?,
