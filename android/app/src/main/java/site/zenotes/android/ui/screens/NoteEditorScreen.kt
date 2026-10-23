@@ -10,8 +10,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +35,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TextFormat
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
@@ -83,7 +82,7 @@ import coil.compose.AsyncImage
 import site.zenotes.android.model.NoteColor
 import site.zenotes.android.ui.EditorDraft
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteEditorScreen(
     initialDraft: EditorDraft,
@@ -104,6 +103,7 @@ fun NoteEditorScreen(
     var newTagText by rememberSaveable { mutableStateOf("") }
     var showAddTagDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var showFormatBar by rememberSaveable(initialDraft.id) { mutableStateOf(false) }
 
     val selectedColor = NoteColor.fromApi(colorName)
     val isDark = isSystemInDarkTheme()
@@ -320,101 +320,116 @@ fun NoteEditorScreen(
                 .padding(innerPadding)
                 .imePadding()
         ) {
-            // Color Picker + Tags Bar
+            // Compact single row: colors + tags + formatting toggle.
+            // Markdown buttons stay collapsed so the note body gets the space on a phone.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(start = 12.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NoteColor.entries.forEach { option ->
-                    val isSelected = option == selectedColor
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(option.swatchColor)
-                            .border(
-                                width = if (isSelected) 2.5.dp else 1.dp,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outline
-                                },
-                                shape = CircleShape
-                            )
-                            .clickable { colorName = option.apiValue },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSelected) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    NoteColor.entries.forEach { option ->
+                        val isSelected = option == selectedColor
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(option.swatchColor)
+                                .border(
+                                    width = if (isSelected) 2.5.dp else 1.dp,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outline
+                                    },
+                                    shape = CircleShape
+                                )
+                                .clickable { colorName = option.apiValue },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = option.label,
+                                    tint = Color(0xFF241E18),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    tags.forEach { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                Text(
+                                    text = "#$tag",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove tag",
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable { tags = tags.filterNot { it == tag } },
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    AssistChip(
+                        onClick = { showAddTagDialog = true },
+                        label = { Text("Tag") },
+                        leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = option.label,
-                                tint = Color(0xFF241E18),
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add tag",
                                 modifier = Modifier.size(14.dp)
                             )
                         }
-                    }
+                    )
                 }
-            }
 
-            // Tags chips
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                tags.forEach { tag ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                if (!isPreviewMode) {
+                    IconButton(
+                        onClick = { showFormatBar = !showFormatBar },
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
-                        ) {
-                            Text(
-                                text = "#$tag",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Remove tag",
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .clickable { tags = tags.filterNot { it == tag } },
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                AssistChip(
-                    onClick = { showAddTagDialog = true },
-                    label = { Text("Add Tag") },
-                    leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            imageVector = Icons.Default.TextFormat,
+                            contentDescription = if (showFormatBar) "Hide formatting" else "Show formatting",
+                            tint = if (showFormatBar) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                         )
                     }
-                )
+                }
             }
 
-            // Quick Markdown Formatting Bar (when in Edit mode)
-            if (!isPreviewMode) {
+            // Quick Markdown Formatting Bar (collapsed by default)
+            if (!isPreviewMode && showFormatBar) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     MarkdownQuickButton("H1") { content = appendSnippet(content, "\n# ") }
@@ -429,7 +444,7 @@ fun NoteEditorScreen(
 
             Divider(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                modifier = Modifier.padding(vertical = 4.dp)
+                modifier = Modifier.padding(vertical = 2.dp)
             )
 
             // Main scrollable Title + Content area
